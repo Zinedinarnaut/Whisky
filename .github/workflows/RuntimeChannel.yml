@@ -1,0 +1,134 @@
+name: Runtime Channel
+
+on:
+  workflow_dispatch:
+    inputs:
+      archive_url:
+        description: "Direct URL to Libraries.tar.gz"
+        required: true
+        type: string
+      version_plist_url:
+        description: "URL to WhiskyWineVersion.plist"
+        required: false
+        default: "https://raw.githubusercontent.com/Whisky-App/wine/7.7/WhiskyWineVersion.plist"
+        type: string
+      runtime_version:
+        description: "Override runtime version (x.y.z). Leave empty to derive from plist"
+        required: false
+        default: ""
+        type: string
+      wine_version:
+        description: "Wine version in this runtime"
+        required: true
+        default: "7.7.0"
+        type: string
+      dxvk_version:
+        description: "DXVK version in this runtime"
+        required: true
+        default: "1.10.3-20230507-repack"
+        type: string
+      d3dmetal_version:
+        description: "D3DMetal version in this runtime"
+        required: true
+        default: "2.0"
+        type: string
+      winetricks_version:
+        description: "Winetricks version in this runtime"
+        required: true
+        default: "20250102"
+        type: string
+      wine_mono_version:
+        description: "wine-mono version in this runtime"
+        required: true
+        default: "7.4.1"
+        type: string
+      publish_release:
+        description: "Upload archive + metadata to a GitHub release and use that URL"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate signing key
+        env:
+          PRIVATE_KEY_B64: ${{ secrets.RUNTIME_MANIFEST_PRIVATE_KEY }}
+        run: |
+          if [ -z "$PRIVATE_KEY_B64" ]; then
+            echo "RUNTIME_MANIFEST_PRIVATE_KEY is not configured"
+            exit 1
+          fi
+
+      - name: Download runtime inputs
+        run: |
+          mkdir -p runtime/Wine .tmp/runtime
+          curl -fL "${{ inputs.archive_url }}" -o .tmp/runtime/Libraries.tar.gz
+          curl -fL "${{ inputs.version_plist_url }}" -o runtime/Wine/WhiskyWineVersion.plist
+
+      - name: Resolve runtime metadata
+        id: runtime
+        run: |
+          ARCHIVE_SHA256=$(shasum -a 256 .tmp/runtime/Libraries.tar.gz | awk '{print $1}')
+
+          if [ -n "${{ inputs.runtime_version }}" ]; then
+            RUNTIME_VERSION="${{ inputs.runtime_version }}"
+          else
+            RUNTIME_VERSION=$(plutil -convert json -o - runtime/Wine/WhiskyWineVersion.plist | jq -r '.version | "\(.major).\(.minor).\(.patch)"')
+          fi
+
+          if [ "${{ inputs.publish_release }}" = "true" ]; then
+            RELEASE_TAG="runtime-v${RUNTIME_VERSION}"
+            ARCHIVE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/Libraries.tar.gz"
+            echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          else
+            ARCHIVE_URL="${{ inputs.archive_url }}"
+          fi
+
+          echo "runtime_version=$RUNTIME_VERSION" >> "$GITHUB_OUTPUT"
+          echo "archive_sha256=$ARCHIVE_SHA256" >> "$GITHUB_OUTPUT"
+          echo "archive_url=$ARCHIVE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Generate signed manifest
+        env:
+          PRIVATE_KEY_B64: ${{ secrets.RUNTIME_MANIFEST_PRIVATE_KEY }}
+        run: |
+          scripts/runtime/generate_manifest.sh \
+            --output runtime/Wine/manifest.json \
+            --version "${{ steps.runtime.outputs.runtime_version }}" \
+            --archive-url "${{ steps.runtime.outputs.archive_url }}" \
+            --archive-sha256 "${{ steps.runtime.outputs.archive_sha256 }}" \
+            --wine-version "${{ inputs.wine_version }}" \
+            --dxvk-version "${{ inputs.dxvk_version }}" \
+            --d3dmetal-version "${{ inputs.d3dmetal_version }}" \
+            --winetricks-version "${{ inputs.winetricks_version }}" \
+            --wine-mono-version "${{ inputs.wine_mono_version }}"
+
+      - name: Publish runtime release
+        if: ${{ inputs.publish_release == true }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.runtime.outputs.release_tag }}
+          name: Runtime ${{ steps.runtime.outputs.runtime_version }}
+          files: |
+            .tmp/runtime/Libraries.tar.gz
+            runtime/Wine/WhiskyWineVersion.plist
+            runtime/Wine/manifest.json
+
+      - name: Commit runtime channel metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/Wine/manifest.json runtime/Wine/WhiskyWineVersion.plist
+          if git diff --cached --quiet; then
+            echo "No runtime metadata changes"
+            exit 0
+          fi
+          git commit -m "Update runtime channel to ${{ steps.runtime.outputs.runtime_version }}"
+          git push
