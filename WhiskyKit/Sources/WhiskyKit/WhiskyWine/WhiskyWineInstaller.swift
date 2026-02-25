@@ -16,8 +16,34 @@
 //  If not, see https://www.gnu.org/licenses/.
 //
 
+import CryptoKit
 import Foundation
 import SemanticVersion
+
+public struct WhiskyWineRuntimeManifest: Codable, Sendable {
+    public let version: String
+    public let archiveURL: URL
+    public let archiveSHA256: String
+    public let wineVersion: String
+    public let dxvkVersion: String
+    public let d3dMetalVersion: String
+    public let winetricksVersion: String
+    public let wineMonoVersion: String
+
+    public var semanticVersion: SemanticVersion {
+        SemanticVersion(version) ?? SemanticVersion(0, 0, 0)
+    }
+
+    public var semanticWineVersion: SemanticVersion? {
+        SemanticVersion(wineVersion)
+    }
+}
+
+public enum WhiskyWineInstallerError: Error {
+    case invalidManifestSignature
+    case invalidManifestPayload
+    case checksumMismatch(expected: String, actual: String)
+}
 
 public class WhiskyWineInstaller {
     /// The Whisky application folder
@@ -31,24 +57,68 @@ public class WhiskyWineInstaller {
     /// URL to the installed `wine` `bin` directory
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
 
+    private static let defaultRuntimeBaseURL: URL = {
+        guard let url = URL(string: "https://data.getwhisky.app/Wine") else {
+            fatalError("Invalid URL string for defaultRuntimeBaseURL")
+        }
+        return url
+    }()
+
+    private static let legacyArchiveURL = defaultRuntimeBaseURL.appending(path: "Libraries.tar.gz")
+    private static let defaultSignedManifestURL = defaultRuntimeBaseURL.appending(path: "manifest.json")
+    private static let legacyVersionPlistURL = defaultRuntimeBaseURL.appending(path: "WhiskyWineVersion.plist")
+
+    private static let manifestSigningPublicKey = "1OFop7oavBiAY9XvxcSi8BX96NFHVU0V9RFabpJpz2Y="
+    private static let bundledManifestSignature =
+        "DT9Ry8bWrBYkypX5PWCaK9VP0UdNR5gumD3CmQL32k9UnwcdCuwimNNyzHzNN/8DRHcCparEmdCPHMKKsF0YDg=="
+    private static let runtimeManifestOverrideEnvironment = "WHISKY_RUNTIME_MANIFEST_URL"
+    private static let runtimeManifestOverrideDefaultsKey = "whiskyWineManifestURL"
+    private static let runtimeBaseOverrideEnvironment = "WHISKY_RUNTIME_BASE_URL"
+    private static let runtimeBaseOverrideDefaultsKey = "whiskyWineRuntimeBaseURL"
+
+    public static let bundledRuntimeManifest = WhiskyWineRuntimeManifest(
+        version: "2.5.0",
+        archiveURL: legacyArchiveURL,
+        archiveSHA256: "3283b80fb7ec7b105529a9a3fcd2628685e2c7ea6492536f123e758f79c4c077",
+        wineVersion: "7.7.0",
+        dxvkVersion: "1.10.3-20230507-repack",
+        d3dMetalVersion: "2.0",
+        winetricksVersion: "20250102",
+        wineMonoVersion: "7.4.1"
+    )
+
     public static func isWhiskyWineInstalled() -> Bool {
         return whiskyWineVersion() != nil
     }
 
-    public static func install(from: URL) {
+    public static func runtimeManifest() async -> WhiskyWineRuntimeManifest {
         do {
-            if !FileManager.default.fileExists(atPath: applicationFolder.path) {
-                try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
-            } else {
-                // Recreate it
-                try FileManager.default.removeItem(at: applicationFolder)
-                try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
-            }
-
-            try Tar.untar(tarBall: from, toURL: applicationFolder)
-            try FileManager.default.removeItem(at: from)
+            return try await fetchSignedRuntimeManifest()
         } catch {
-            print("Failed to install WhiskyWine: \(error)")
+            if (try? validateSignature(for: bundledRuntimeManifest, signature: bundledManifestSignature)) != true {
+                print("Bundled runtime manifest signature validation failed")
+            }
+            return bundledRuntimeManifest
+        }
+    }
+
+    public static func install(from: URL, manifest: WhiskyWineRuntimeManifest?) async throws {
+        defer {
+            try? FileManager.default.removeItem(at: from)
+        }
+
+        if !FileManager.default.fileExists(atPath: applicationFolder.path) {
+            try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
+        } else {
+            // Recreate it
+            try FileManager.default.removeItem(at: applicationFolder)
+            try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
+        }
+
+        try Tar.untar(tarBall: from, toURL: applicationFolder)
+
+        if let manifest {
+            try writeRuntimeVersionMetadata(from: manifest)
         }
     }
 
@@ -61,61 +131,234 @@ public class WhiskyWineInstaller {
     }
 
     public static func shouldUpdateWhiskyWine() async -> (Bool, SemanticVersion) {
-        let versionPlistURL = "https://data.getwhisky.app/Wine/WhiskyWineVersion.plist"
         let localVersion = whiskyWineVersion()
 
-        var remoteVersion: SemanticVersion?
+        if let remoteManifest = try? await fetchSignedRuntimeManifest() {
+            let remoteVersion = remoteManifest.semanticVersion
 
-        if let remoteUrl = URL(string: versionPlistURL) {
-            remoteVersion = await withCheckedContinuation { continuation in
-                URLSession(configuration: .ephemeral).dataTask(with: URLRequest(url: remoteUrl)) { data, _, error in
-                    do {
-                        if error == nil, let data = data {
-                            let decoder = PropertyListDecoder()
-                            let remoteInfo = try decoder.decode(WhiskyWineVersion.self, from: data)
-                            let remoteVersion = remoteInfo.version
-
-                            continuation.resume(returning: remoteVersion)
-                            return
-                        }
-                        if let error = error {
-                            print(error)
-                        }
-                    } catch {
-                        print(error)
-                    }
-
-                    continuation.resume(returning: nil)
-                }.resume()
-            }
-        }
-
-        if let localVersion = localVersion, let remoteVersion = remoteVersion {
-            if localVersion < remoteVersion {
+            if let localVersion, localVersion < remoteVersion {
                 return (true, remoteVersion)
             }
+
+            return (false, SemanticVersion(0, 0, 0))
+        }
+
+        let remoteVersion = await fetchLegacyRemoteVersion()
+
+        if let localVersion, let remoteVersion, localVersion < remoteVersion {
+            return (true, remoteVersion)
         }
 
         return (false, SemanticVersion(0, 0, 0))
     }
 
-    public static func whiskyWineVersion() -> SemanticVersion? {
-        do {
-            let versionPlist = libraryFolder
-                .appending(path: "WhiskyWineVersion")
-                .appendingPathExtension("plist")
+    public static func verifyArchive(at fileURL: URL, expectedSHA256: String) throws {
+        let actual = try sha256(of: fileURL)
 
-            let decoder = PropertyListDecoder()
-            let data = try Data(contentsOf: versionPlist)
-            let info = try decoder.decode(WhiskyWineVersion.self, from: data)
-            return info.version
+        guard actual.caseInsensitiveCompare(expectedSHA256) == .orderedSame else {
+            throw WhiskyWineInstallerError.checksumMismatch(expected: expectedSHA256, actual: actual)
+        }
+    }
+
+    public static func whiskyWineInfo() -> WhiskyWineVersion? {
+        do {
+            let data = try Data(contentsOf: versionPlistPath)
+            return try PropertyListDecoder().decode(WhiskyWineVersion.self, from: data)
         } catch {
-            print(error)
             return nil
         }
     }
+
+    public static func whiskyWineVersion() -> SemanticVersion? {
+        whiskyWineInfo()?.version
+    }
+
+    public static func defaultWineVersion() -> SemanticVersion {
+        if let installedWineVersion = whiskyWineInfo()?.wineVersion {
+            return installedWineVersion
+        }
+
+        return bundledRuntimeManifest.semanticWineVersion ?? SemanticVersion(0, 0, 0)
+    }
 }
 
-struct WhiskyWineVersion: Codable {
-    var version: SemanticVersion = SemanticVersion(1, 0, 0)
+private extension WhiskyWineInstaller {
+    struct RuntimeManifestEnvelope: Codable {
+        let manifest: WhiskyWineRuntimeManifest
+        let signature: String
+    }
+
+    static var versionPlistPath: URL {
+        libraryFolder
+            .appending(path: "WhiskyWineVersion")
+            .appendingPathExtension("plist")
+    }
+
+    static func writeRuntimeVersionMetadata(from manifest: WhiskyWineRuntimeManifest) throws {
+        var info = whiskyWineInfo() ?? WhiskyWineVersion()
+        info.version = manifest.semanticVersion
+        info.wineVersion = manifest.semanticWineVersion
+        info.dxvkVersion = manifest.dxvkVersion
+        info.d3dMetalVersion = manifest.d3dMetalVersion
+        info.winetricksVersion = manifest.winetricksVersion
+        info.wineMonoVersion = manifest.wineMonoVersion
+
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .xml
+        let data = try encoder.encode(info)
+        try data.write(to: versionPlistPath)
+    }
+
+    static func fetchSignedRuntimeManifest() async throws -> WhiskyWineRuntimeManifest {
+        var lastError: Error?
+
+        for runtimeManifestURL in runtimeManifestURLs() {
+            do {
+                return try await fetchSignedRuntimeManifest(from: runtimeManifestURL)
+            } catch {
+                lastError = error
+            }
+        }
+
+        throw lastError ?? WhiskyWineInstallerError.invalidManifestPayload
+    }
+
+    static func fetchSignedRuntimeManifest(from runtimeManifestURL: URL) async throws -> WhiskyWineRuntimeManifest {
+        let request = URLRequest(url: runtimeManifestURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                 timeoutInterval: 20)
+        let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
+            throw WhiskyWineInstallerError.invalidManifestPayload
+        }
+
+        let envelope = try JSONDecoder().decode(RuntimeManifestEnvelope.self, from: data)
+        guard try validateSignature(for: envelope.manifest, signature: envelope.signature) else {
+            throw WhiskyWineInstallerError.invalidManifestSignature
+        }
+
+        return envelope.manifest
+    }
+
+    static func runtimeManifestURLs() -> [URL] {
+        var urls: [URL] = []
+
+        if let manifestURL = runtimeManifestOverrideURL() {
+            urls.append(manifestURL)
+        }
+
+        urls.append(contentsOf: runtimeBaseURLs().map { $0.appending(path: "manifest.json") })
+        urls.append(defaultSignedManifestURL)
+
+        var seen = Set<String>()
+        return urls.filter { seen.insert($0.absoluteString).inserted }
+    }
+
+    static func fetchLegacyRemoteVersion() async -> SemanticVersion? {
+        for baseURL in runtimeBaseURLs() {
+            let remoteVersionURL = baseURL.appending(path: "WhiskyWineVersion.plist")
+            if let version = await fetchLegacyRemoteVersion(from: remoteVersionURL) {
+                return version
+            }
+        }
+
+        return nil
+    }
+
+    static func fetchLegacyRemoteVersion(from remoteVersionURL: URL) async -> SemanticVersion? {
+        do {
+            let request = URLRequest(url: remoteVersionURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                     timeoutInterval: 20)
+            let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode) else {
+                return nil
+            }
+            let remoteInfo = try PropertyListDecoder().decode(WhiskyWineVersion.self, from: data)
+            return remoteInfo.version
+        } catch {
+            return nil
+        }
+    }
+
+    static func sha256(of fileURL: URL) throws -> String {
+        let fileHandle = try FileHandle(forReadingFrom: fileURL)
+        defer {
+            try? fileHandle.close()
+        }
+
+        var hasher = SHA256()
+
+        while true {
+            let chunk = try fileHandle.read(upToCount: 1_048_576) ?? Data()
+            if chunk.isEmpty { break }
+            hasher.update(data: chunk)
+        }
+
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func validateSignature(for manifest: WhiskyWineRuntimeManifest, signature: String) throws -> Bool {
+        guard let publicKeyData = Data(base64Encoded: manifestSigningPublicKey),
+              let signatureData = Data(base64Encoded: signature) else {
+            return false
+        }
+
+        let publicKey = try Curve25519.Signing.PublicKey(rawRepresentation: publicKeyData)
+        let signedData = try canonicalManifestPayload(for: manifest)
+
+        return publicKey.isValidSignature(signatureData, for: signedData)
+    }
+
+    static func canonicalManifestPayload(for manifest: WhiskyWineRuntimeManifest) throws -> Data {
+        let object: [String: String] = [
+            "archiveSHA256": manifest.archiveSHA256,
+            "archiveURL": manifest.archiveURL.absoluteString,
+            "d3dMetalVersion": manifest.d3dMetalVersion,
+            "dxvkVersion": manifest.dxvkVersion,
+            "version": manifest.version,
+            "wineMonoVersion": manifest.wineMonoVersion,
+            "wineVersion": manifest.wineVersion,
+            "winetricksVersion": manifest.winetricksVersion
+        ]
+
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
+    static func runtimeManifestOverrideURL() -> URL? {
+        let overrideURLString = ProcessInfo.processInfo.environment[runtimeManifestOverrideEnvironment]
+            ?? UserDefaults.standard.string(forKey: runtimeManifestOverrideDefaultsKey)
+        guard let overrideURLString else {
+            return nil
+        }
+
+        return URL(string: overrideURLString)
+    }
+
+    static func runtimeBaseURLs() -> [URL] {
+        var urls: [URL] = []
+
+        let overrideURLString = ProcessInfo.processInfo.environment[runtimeBaseOverrideEnvironment]
+            ?? UserDefaults.standard.string(forKey: runtimeBaseOverrideDefaultsKey)
+        if let overrideURLString,
+           let overrideURL = URL(string: overrideURLString) {
+            urls.append(overrideURL)
+        }
+
+        urls.append(defaultRuntimeBaseURL)
+
+        var seen = Set<String>()
+        return urls.filter { seen.insert($0.absoluteString).inserted }
+    }
+}
+
+public struct WhiskyWineVersion: Codable {
+    public var version: SemanticVersion = SemanticVersion(1, 0, 0)
+    public var wineVersion: SemanticVersion?
+    public var dxvkVersion: String?
+    public var d3dMetalVersion: String?
+    public var winetricksVersion: String?
+    public var wineMonoVersion: String?
 }

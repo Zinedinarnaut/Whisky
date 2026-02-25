@@ -21,7 +21,9 @@ import WhiskyKit
 
 struct WhiskyWineInstallView: View {
     @State var installing: Bool = true
+    @State var error: Error?
     @Binding var tarLocation: URL
+    @Binding var runtimeManifest: WhiskyWineRuntimeManifest?
     @Binding var path: [SetupStage]
     @Binding var showSetup: Bool
 
@@ -39,6 +41,15 @@ struct WhiskyWineInstallView: View {
                     ProgressView()
                         .progressViewStyle(.circular)
                         .frame(width: 80)
+                } else if let error {
+                    Image(systemName: "xmark.octagon")
+                        .resizable()
+                        .frame(width: 80, height: 80)
+                        .foregroundStyle(.red)
+                    Text(error.localizedDescription)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                        .padding(.top, 4)
                 } else {
                     Image(systemName: "checkmark.circle")
                         .resizable()
@@ -52,12 +63,19 @@ struct WhiskyWineInstallView: View {
         .frame(width: 400, height: 200)
         .onAppear {
             Task.detached {
-                await WhiskyWineInstaller.install(from: tarLocation)
-                await MainActor.run {
-                    installing = false
+                do {
+                    try await WhiskyWineInstaller.install(from: tarLocation, manifest: runtimeManifest)
+                    await MainActor.run {
+                        installing = false
+                    }
+                    sleep(2)
+                    await proceed()
+                } catch {
+                    await MainActor.run {
+                        installing = false
+                        self.error = error
+                    }
                 }
-                sleep(2)
-                await proceed()
             }
         }
     }
