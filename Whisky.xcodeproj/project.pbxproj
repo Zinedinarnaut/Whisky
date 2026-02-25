@@ -577,7 +577,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export PATH=\"$PATH:/opt/homebrew/bin\"\nif which swiftlint > /dev/null; then\n    echo \"Running SwiftLint\"\n    swiftlint --strict\nelse\n    echo \"error: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\n    exit -1\nfi\n";
+			shellScript = "export PATH=\"$PATH:/opt/homebrew/bin\"\nif which swiftlint > /dev/null; then\n    echo \"Running SwiftLint\"\n    swiftlint --strict\nelif [ \"$CI\" = \"true\" ]; then\n    echo \"error: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\n    exit 1\nelse\n    echo \"warning: SwiftLint not installed; skipping local lint\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1027,8 +1027,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
 			requirement = {
-				branch = 2.x;
-				kind = branch;
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.0;
 			};
 		};
 		6E5967682A9A421800D64F70 /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
@@ -1060,7 +1060,7 @@
 			repositoryURL = "https://github.com/SwiftPackageIndex/SemanticVersion";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.3.6;
+				minimumVersion = 0.5.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
