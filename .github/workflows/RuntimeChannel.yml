@@ -83,7 +83,7 @@ jobs:
             RUNTIME_VERSION=$(plutil -convert json -o - runtime/Wine/WhiskyWineVersion.plist | jq -r '.version | "\(.major).\(.minor).\(.patch)"')
           fi
 
-          if [ "${{ inputs.publish_release }}" = "true" ]; then
+          if ${{ inputs.publish_release }}; then
             RELEASE_TAG="runtime-v${RUNTIME_VERSION}"
             ARCHIVE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/Libraries.tar.gz"
             echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
