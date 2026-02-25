@@ -37,6 +37,13 @@ Translated on [Crowdin](https://crowdin.com/project/whisky).
 - CPU: Apple Silicon (M-series chips)
 - OS: macOS Sonoma 14.0 or later
 
+## Runtime Channel (Fork)
+
+This fork supports a signed runtime channel for `Libraries.tar.gz` updates.
+
+- Setup and publishing guide: [`docs/runtime-channel.md`](docs/runtime-channel.md)
+- Runtime metadata location in this repo: [`runtime/Wine`](runtime/Wine)
+
 ## Homebrew
 
 Whisky is on homebrew! Install with 

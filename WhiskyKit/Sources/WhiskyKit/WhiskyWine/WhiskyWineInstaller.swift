@@ -58,19 +58,25 @@ public class WhiskyWineInstaller {
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
 
     private static let defaultRuntimeBaseURL: URL = {
-        guard let url = URL(string: "https://data.getwhisky.app/Wine") else {
+        guard let url = URL(string: "https://raw.githubusercontent.com/Zinedinarnaut/Whisky/main/runtime/Wine") else {
             fatalError("Invalid URL string for defaultRuntimeBaseURL")
         }
         return url
     }()
 
-    private static let legacyArchiveURL = defaultRuntimeBaseURL.appending(path: "Libraries.tar.gz")
-    private static let defaultSignedManifestURL = defaultRuntimeBaseURL.appending(path: "manifest.json")
-    private static let legacyVersionPlistURL = defaultRuntimeBaseURL.appending(path: "WhiskyWineVersion.plist")
+    private static let legacyRuntimeBaseURL: URL = {
+        guard let url = URL(string: "https://data.getwhisky.app/Wine") else {
+            fatalError("Invalid URL string for legacyRuntimeBaseURL")
+        }
+        return url
+    }()
 
-    private static let manifestSigningPublicKey = "1OFop7oavBiAY9XvxcSi8BX96NFHVU0V9RFabpJpz2Y="
+    private static let legacyArchiveURL = legacyRuntimeBaseURL.appending(path: "Libraries.tar.gz")
+    private static let defaultSignedManifestURL = defaultRuntimeBaseURL.appending(path: "manifest.json")
+
+    private static let manifestSigningPublicKey = "kamGWR/S94rcaem3JrXJhHIKal3jjT4zzMfXcp6n5SI="
     private static let bundledManifestSignature =
-        "DT9Ry8bWrBYkypX5PWCaK9VP0UdNR5gumD3CmQL32k9UnwcdCuwimNNyzHzNN/8DRHcCparEmdCPHMKKsF0YDg=="
+        "sVFTtTj16fhLkeS2nC5FjmiMJo2PDDG66SWKrQeNr25HRh19PLrd6J72qQ2vR3seDhtI8Ldai68/UHtmbi03Dw=="
     private static let runtimeManifestOverrideEnvironment = "WHISKY_RUNTIME_MANIFEST_URL"
     private static let runtimeManifestOverrideDefaultsKey = "whiskyWineManifestURL"
     private static let runtimeBaseOverrideEnvironment = "WHISKY_RUNTIME_BASE_URL"
@@ -348,6 +354,7 @@ private extension WhiskyWineInstaller {
         }
 
         urls.append(defaultRuntimeBaseURL)
+        urls.append(legacyRuntimeBaseURL)
 
         var seen = Set<String>()
         return urls.filter { seen.insert($0.absoluteString).inserted }
