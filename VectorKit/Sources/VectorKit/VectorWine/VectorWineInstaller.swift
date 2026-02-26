@@ -1,0 +1,371 @@
+//
+//  VectorWineInstaller.swift
+//  VectorKit
+//
+//  This file is part of Vector.
+//
+//  Vector is free software: you can redistribute it and/or modify it under the terms
+//  of the GNU General Public License as published by the Free Software Foundation,
+//  either version 3 of the License, or (at your option) any later version.
+//
+//  Vector is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+//  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+//  See the GNU General Public License for more details.
+//
+//  You should have received a copy of the GNU General Public License along with Vector.
+//  If not, see https://www.gnu.org/licenses/.
+//
+
+import CryptoKit
+import Foundation
+import SemanticVersion
+
+public struct VectorWineRuntimeManifest: Codable, Sendable {
+    public let version: String
+    public let archiveURL: URL
+    public let archiveSHA256: String
+    public let wineVersion: String
+    public let dxvkVersion: String
+    public let d3dMetalVersion: String
+    public let winetricksVersion: String
+    public let wineMonoVersion: String
+
+    public var semanticVersion: SemanticVersion {
+        SemanticVersion(version) ?? SemanticVersion(0, 0, 0)
+    }
+
+    public var semanticWineVersion: SemanticVersion? {
+        SemanticVersion(wineVersion)
+    }
+}
+
+public enum VectorWineInstallerError: Error {
+    case invalidManifestSignature
+    case invalidManifestPayload
+    case checksumMismatch(expected: String, actual: String)
+}
+
+public class VectorWineInstaller {
+    /// The Vector application folder
+    public static let applicationFolder = FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask
+        )[0].appending(path: Bundle.vectorBundleIdentifier)
+
+    /// The folder of all the libfrary files
+    public static let libraryFolder = applicationFolder.appending(path: "Libraries")
+
+    /// URL to the installed `wine` `bin` directory
+    public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
+
+    private static let defaultRuntimeBaseURL: URL = {
+        guard let url = URL(string: "https://raw.githubusercontent.com/Zinedinarnaut/Vector/main/runtime/Wine") else {
+            fatalError("Invalid URL string for defaultRuntimeBaseURL")
+        }
+        return url
+    }()
+
+    private static let legacyRuntimeBaseURL: URL = {
+        guard let url = URL(string: "https://data.getvector.app/Wine") else {
+            fatalError("Invalid URL string for legacyRuntimeBaseURL")
+        }
+        return url
+    }()
+
+    private static let legacyArchiveURL = legacyRuntimeBaseURL.appending(path: "Libraries.tar.gz")
+    private static let defaultSignedManifestURL = defaultRuntimeBaseURL.appending(path: "manifest.json")
+
+    private static let manifestSigningPublicKey = "kamGWR/S94rcaem3JrXJhHIKal3jjT4zzMfXcp6n5SI="
+    private static let bundledManifestSignature =
+        "sVFTtTj16fhLkeS2nC5FjmiMJo2PDDG66SWKrQeNr25HRh19PLrd6J72qQ2vR3seDhtI8Ldai68/UHtmbi03Dw=="
+    private static let runtimeManifestOverrideEnvironment = "VECTOR_RUNTIME_MANIFEST_URL"
+    private static let runtimeManifestOverrideDefaultsKey = "vectorWineManifestURL"
+    private static let runtimeBaseOverrideEnvironment = "VECTOR_RUNTIME_BASE_URL"
+    private static let runtimeBaseOverrideDefaultsKey = "vectorWineRuntimeBaseURL"
+
+    public static let bundledRuntimeManifest = VectorWineRuntimeManifest(
+        version: "2.5.0",
+        archiveURL: legacyArchiveURL,
+        archiveSHA256: "3283b80fb7ec7b105529a9a3fcd2628685e2c7ea6492536f123e758f79c4c077",
+        wineVersion: "7.7.0",
+        dxvkVersion: "1.10.3-20230507-repack",
+        d3dMetalVersion: "2.0",
+        winetricksVersion: "20250102",
+        wineMonoVersion: "7.4.1"
+    )
+
+    public static func isVectorWineInstalled() -> Bool {
+        return vectorWineVersion() != nil
+    }
+
+    public static func runtimeManifest() async -> VectorWineRuntimeManifest {
+        do {
+            return try await fetchSignedRuntimeManifest()
+        } catch {
+            if (try? validateSignature(for: bundledRuntimeManifest, signature: bundledManifestSignature)) != true {
+                print("Bundled runtime manifest signature validation failed")
+            }
+            return bundledRuntimeManifest
+        }
+    }
+
+    public static func install(from: URL, manifest: VectorWineRuntimeManifest?) async throws {
+        defer {
+            try? FileManager.default.removeItem(at: from)
+        }
+
+        if !FileManager.default.fileExists(atPath: applicationFolder.path) {
+            try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
+        } else {
+            // Recreate it
+            try FileManager.default.removeItem(at: applicationFolder)
+            try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
+        }
+
+        try Tar.untar(tarBall: from, toURL: applicationFolder)
+
+        if let manifest {
+            try writeRuntimeVersionMetadata(from: manifest)
+        }
+    }
+
+    public static func uninstall() {
+        do {
+            try FileManager.default.removeItem(at: libraryFolder)
+        } catch {
+            print("Failed to uninstall VectorWine: \(error)")
+        }
+    }
+
+    public static func shouldUpdateVectorWine() async -> (Bool, SemanticVersion) {
+        let localVersion = vectorWineVersion()
+
+        if let remoteManifest = try? await fetchSignedRuntimeManifest() {
+            let remoteVersion = remoteManifest.semanticVersion
+
+            if let localVersion, localVersion < remoteVersion {
+                return (true, remoteVersion)
+            }
+
+            return (false, SemanticVersion(0, 0, 0))
+        }
+
+        let remoteVersion = await fetchLegacyRemoteVersion()
+
+        if let localVersion, let remoteVersion, localVersion < remoteVersion {
+            return (true, remoteVersion)
+        }
+
+        return (false, SemanticVersion(0, 0, 0))
+    }
+
+    public static func verifyArchive(at fileURL: URL, expectedSHA256: String) throws {
+        let actual = try sha256(of: fileURL)
+
+        guard actual.caseInsensitiveCompare(expectedSHA256) == .orderedSame else {
+            throw VectorWineInstallerError.checksumMismatch(expected: expectedSHA256, actual: actual)
+        }
+    }
+
+    public static func vectorWineInfo() -> VectorWineVersion? {
+        do {
+            let data = try Data(contentsOf: versionPlistPath)
+            return try PropertyListDecoder().decode(VectorWineVersion.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    public static func vectorWineVersion() -> SemanticVersion? {
+        vectorWineInfo()?.version
+    }
+
+    public static func defaultWineVersion() -> SemanticVersion {
+        if let installedWineVersion = vectorWineInfo()?.wineVersion {
+            return installedWineVersion
+        }
+
+        return bundledRuntimeManifest.semanticWineVersion ?? SemanticVersion(0, 0, 0)
+    }
+}
+
+private extension VectorWineInstaller {
+    struct RuntimeManifestEnvelope: Codable {
+        let manifest: VectorWineRuntimeManifest
+        let signature: String
+    }
+
+    static var versionPlistPath: URL {
+        libraryFolder
+            .appending(path: "VectorWineVersion")
+            .appendingPathExtension("plist")
+    }
+
+    static func writeRuntimeVersionMetadata(from manifest: VectorWineRuntimeManifest) throws {
+        var info = vectorWineInfo() ?? VectorWineVersion()
+        info.version = manifest.semanticVersion
+        info.wineVersion = manifest.semanticWineVersion
+        info.dxvkVersion = manifest.dxvkVersion
+        info.d3dMetalVersion = manifest.d3dMetalVersion
+        info.winetricksVersion = manifest.winetricksVersion
+        info.wineMonoVersion = manifest.wineMonoVersion
+
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .xml
+        let data = try encoder.encode(info)
+        try data.write(to: versionPlistPath)
+    }
+
+    static func fetchSignedRuntimeManifest() async throws -> VectorWineRuntimeManifest {
+        var lastError: Error?
+
+        for runtimeManifestURL in runtimeManifestURLs() {
+            do {
+                return try await fetchSignedRuntimeManifest(from: runtimeManifestURL)
+            } catch {
+                lastError = error
+            }
+        }
+
+        throw lastError ?? VectorWineInstallerError.invalidManifestPayload
+    }
+
+    static func fetchSignedRuntimeManifest(from runtimeManifestURL: URL) async throws -> VectorWineRuntimeManifest {
+        let request = URLRequest(url: runtimeManifestURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                 timeoutInterval: 20)
+        let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
+            throw VectorWineInstallerError.invalidManifestPayload
+        }
+
+        let envelope = try JSONDecoder().decode(RuntimeManifestEnvelope.self, from: data)
+        guard try validateSignature(for: envelope.manifest, signature: envelope.signature) else {
+            throw VectorWineInstallerError.invalidManifestSignature
+        }
+
+        return envelope.manifest
+    }
+
+    static func runtimeManifestURLs() -> [URL] {
+        var urls: [URL] = []
+
+        if let manifestURL = runtimeManifestOverrideURL() {
+            urls.append(manifestURL)
+        }
+
+        urls.append(contentsOf: runtimeBaseURLs().map { $0.appending(path: "manifest.json") })
+        urls.append(defaultSignedManifestURL)
+
+        var seen = Set<String>()
+        return urls.filter { seen.insert($0.absoluteString).inserted }
+    }
+
+    static func fetchLegacyRemoteVersion() async -> SemanticVersion? {
+        for baseURL in runtimeBaseURLs() {
+            let remoteVersionURL = baseURL.appending(path: "VectorWineVersion.plist")
+            if let version = await fetchLegacyRemoteVersion(from: remoteVersionURL) {
+                return version
+            }
+        }
+
+        return nil
+    }
+
+    static func fetchLegacyRemoteVersion(from remoteVersionURL: URL) async -> SemanticVersion? {
+        do {
+            let request = URLRequest(url: remoteVersionURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                     timeoutInterval: 20)
+            let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode) else {
+                return nil
+            }
+            let remoteInfo = try PropertyListDecoder().decode(VectorWineVersion.self, from: data)
+            return remoteInfo.version
+        } catch {
+            return nil
+        }
+    }
+
+    static func sha256(of fileURL: URL) throws -> String {
+        let fileHandle = try FileHandle(forReadingFrom: fileURL)
+        defer {
+            try? fileHandle.close()
+        }
+
+        var hasher = SHA256()
+
+        while true {
+            let chunk = try fileHandle.read(upToCount: 1_048_576) ?? Data()
+            if chunk.isEmpty { break }
+            hasher.update(data: chunk)
+        }
+
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func validateSignature(for manifest: VectorWineRuntimeManifest, signature: String) throws -> Bool {
+        guard let publicKeyData = Data(base64Encoded: manifestSigningPublicKey),
+              let signatureData = Data(base64Encoded: signature) else {
+            return false
+        }
+
+        let publicKey = try Curve25519.Signing.PublicKey(rawRepresentation: publicKeyData)
+        let signedData = try canonicalManifestPayload(for: manifest)
+
+        return publicKey.isValidSignature(signatureData, for: signedData)
+    }
+
+    static func canonicalManifestPayload(for manifest: VectorWineRuntimeManifest) throws -> Data {
+        let object: [String: String] = [
+            "archiveSHA256": manifest.archiveSHA256,
+            "archiveURL": manifest.archiveURL.absoluteString,
+            "d3dMetalVersion": manifest.d3dMetalVersion,
+            "dxvkVersion": manifest.dxvkVersion,
+            "version": manifest.version,
+            "wineMonoVersion": manifest.wineMonoVersion,
+            "wineVersion": manifest.wineVersion,
+            "winetricksVersion": manifest.winetricksVersion
+        ]
+
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
+    static func runtimeManifestOverrideURL() -> URL? {
+        let overrideURLString = ProcessInfo.processInfo.environment[runtimeManifestOverrideEnvironment]
+            ?? UserDefaults.standard.string(forKey: runtimeManifestOverrideDefaultsKey)
+        guard let overrideURLString else {
+            return nil
+        }
+
+        return URL(string: overrideURLString)
+    }
+
+    static func runtimeBaseURLs() -> [URL] {
+        var urls: [URL] = []
+
+        let overrideURLString = ProcessInfo.processInfo.environment[runtimeBaseOverrideEnvironment]
+            ?? UserDefaults.standard.string(forKey: runtimeBaseOverrideDefaultsKey)
+        if let overrideURLString,
+           let overrideURL = URL(string: overrideURLString) {
+            urls.append(overrideURL)
+        }
+
+        urls.append(defaultRuntimeBaseURL)
+        urls.append(legacyRuntimeBaseURL)
+
+        var seen = Set<String>()
+        return urls.filter { seen.insert($0.absoluteString).inserted }
+    }
+}
+
+public struct VectorWineVersion: Codable {
+    public var version: SemanticVersion = SemanticVersion(1, 0, 0)
+    public var wineVersion: SemanticVersion?
+    public var dxvkVersion: String?
+    public var d3dMetalVersion: String?
+    public var winetricksVersion: String?
+    public var wineMonoVersion: String?
+}

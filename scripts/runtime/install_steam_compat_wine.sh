@@ -5,9 +5,9 @@ RUNTIME_VERSION="${RUNTIME_VERSION:-11.0}"
 RUNTIME_URL="${RUNTIME_URL:-https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.0/wine-stable-11.0-osx64.tar.xz}"
 RUNTIME_SHA256="${RUNTIME_SHA256:-573d43fc4618521148d98ad9c74e63387831827395c014925fdfdc52fe55cb5a}"
 
-APP_SUPPORT_DIR="${HOME}/Library/Application Support/com.isaacmarovitz.Whisky"
+APP_SUPPORT_DIR="${HOME}/Library/Application Support/com.isaacmarovitz.Vector"
 INSTALL_DIR="${APP_SUPPORT_DIR}/Compatibility/SteamWine"
-DEFAULTS_DOMAIN="com.isaacmarovitz.Whisky"
+DEFAULTS_DOMAIN="com.isaacmarovitz.Vector"
 DEFAULTS_WINE_KEY="steamCompatibilityWineBinaryPath"
 DEFAULTS_WINESERVER_KEY="steamCompatibilityWineserverBinaryPath"
 
@@ -50,4 +50,4 @@ defaults write "${DEFAULTS_DOMAIN}" "${DEFAULTS_WINESERVER_KEY}" "${WINESERVER_B
 echo "Steam compatibility runtime installed."
 echo "Wine binary: ${WINE_BIN}"
 echo "Wineserver binary: ${WINESERVER_BIN}"
-echo "Restart Whisky and launch Steam again."
+echo "Restart Vector and launch Steam again."

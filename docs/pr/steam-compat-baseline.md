@@ -5,8 +5,8 @@ Stabilize Steam on Apple Silicon while keeping D3D11 games (for example, Raft) l
 
 ## What changed
 - Added Steam-specific Wine runtime override support (Wine 11) via:
-  - `WHISKY_WINE_BIN_OVERRIDE`
-  - `WHISKY_WINESERVER_BIN_OVERRIDE`
+  - `VECTOR_WINE_BIN_OVERRIDE`
+  - `VECTOR_WINESERVER_BIN_OVERRIDE`
 - Added compatibility runtime installer script with SHA-256 validation:
   - `scripts/runtime/install_steam_compat_wine.sh`
 - Added one-time Steam htmlcache reset marker flow.
@@ -14,7 +14,7 @@ Stabilize Steam on Apple Silicon while keeping D3D11 games (for example, Raft) l
 - Changed Steam launch argument policy:
   - Legacy runtime: keep conservative crash-workaround args.
   - Compatibility runtime: default to no forced CEF/GPU-disable args for better responsiveness.
-  - Manual override: `defaults write com.isaacmarovitz.Whisky steamForceSafeLaunchFlags -bool true`.
+  - Manual override: `defaults write com.isaacmarovitz.Vector steamForceSafeLaunchFlags -bool true`.
 
 ## Why
 - Steam webhelper failures required runtime and bootstrap hardening.
@@ -23,8 +23,8 @@ Stabilize Steam on Apple Silicon while keeping D3D11 games (for example, Raft) l
 
 ## Validation done
 - `swiftlint --strict`
-- `cd WhiskyKit && swift build`
-- `xcodebuild -project Whisky.xcodeproj -scheme Whisky -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build`
+- `cd VectorKit && swift build`
+- `xcodebuild -project Vector.xcodeproj -scheme Vector -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build`
 - Manual Steam smoke test (compat runtime, no forced CEF args):
   - Steam started cleanly.
   - `steam.exe` and `steamwebhelper` processes remained alive.
@@ -34,12 +34,12 @@ Stabilize Steam on Apple Silicon while keeping D3D11 games (for example, Raft) l
 
 ## Rollback knobs
 - Force legacy-safe args (if a machine regresses):
-  - `defaults write com.isaacmarovitz.Whisky steamForceSafeLaunchFlags -bool true`
+  - `defaults write com.isaacmarovitz.Vector steamForceSafeLaunchFlags -bool true`
 - Disable forced-safe args again:
-  - `defaults delete com.isaacmarovitz.Whisky steamForceSafeLaunchFlags`
+  - `defaults delete com.isaacmarovitz.Vector steamForceSafeLaunchFlags`
 - Remove compatibility runtime override:
-  - `defaults delete com.isaacmarovitz.Whisky steamCompatibilityWineBinaryPath`
-  - `defaults delete com.isaacmarovitz.Whisky steamCompatibilityWineserverBinaryPath`
+  - `defaults delete com.isaacmarovitz.Vector steamCompatibilityWineBinaryPath`
+  - `defaults delete com.isaacmarovitz.Vector steamCompatibilityWineserverBinaryPath`
 
 ## Follow-ups
 - Move compatibility runtime versioning to signed manifest metadata.

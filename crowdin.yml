@@ -1,4 +1,4 @@
 files:
-  - source: /Whisky/Localizable.xcstrings
-    translation: /Whisky/Localizable.xcstrings
+  - source: /Vector/Localizable.xcstrings
+    translation: /Vector/Localizable.xcstrings
     multilingual: 1

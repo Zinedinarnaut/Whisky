@@ -1,23 +1,23 @@
 <div align="center">
 
-  # Whisky 🥃 
+  # Vector 🥃 
   *Wine but a bit stronger*
   
-  ![](https://img.shields.io/github/actions/workflow/status/IsaacMarovitz/Whisky/SwiftLint.yml?style=for-the-badge)
+  ![](https://img.shields.io/github/actions/workflow/status/IsaacMarovitz/Vector/SwiftLint.yml?style=for-the-badge)
   [![](https://img.shields.io/discord/1115955071549702235?style=for-the-badge)](https://discord.gg/CsqAfs9CnM)
 </div>
 
 ## Maintenance Status
 
-Whisky is actively maintained again in this fork for Apple Silicon gaming.
+Vector is actively maintained again in this fork for Apple Silicon gaming.
 Runtime, Steam compatibility, and toolchain updates are tracked here.
 
-<img width="650" alt="Config" src="https://github.com/Whisky-App/Whisky/assets/42140194/d0a405e8-76ee-48f0-92b5-165d184a576b">
+<img width="650" alt="Config" src="https://github.com/Vector-App/Vector/assets/42140194/d0a405e8-76ee-48f0-92b5-165d184a576b">
 
 Familiar UI that integrates seamlessly with macOS
 
 <div align="right">
-  <img width="650" alt="New Bottle" src="https://github.com/Whisky-App/Whisky/assets/42140194/ed1a0d69-d8fb-442b-9330-6816ba8981ba">
+  <img width="650" alt="New Bottle" src="https://github.com/Vector-App/Vector/assets/42140194/ed1a0d69-d8fb-442b-9330-6816ba8981ba">
 
   One-click bottle creation and management
 </div>
@@ -28,9 +28,9 @@ Debug and profile with ease
 
 ---
 
-Whisky provides a clean and easy to use graphical wrapper for Wine built in native SwiftUI. You can make and manage bottles, install and run Windows apps and games, and unlock the full potential of your Mac with no technical knowledge required. Whisky is built on top of CrossOver 22.1.1, and Apple's own `Game Porting Toolkit`.
+Vector provides a clean and easy to use graphical wrapper for Wine built in native SwiftUI. You can make and manage bottles, install and run Windows apps and games, and unlock the full potential of your Mac with no technical knowledge required. Vector is built on top of CrossOver 22.1.1, and Apple's own `Game Porting Toolkit`.
 
-Translated on [Crowdin](https://crowdin.com/project/whisky).
+Translated on [Crowdin](https://crowdin.com/project/vector).
 
 ---
 
@@ -53,14 +53,14 @@ Steam can require a newer Wine build than the bundled runtime. This fork support
 scripts/runtime/install_steam_compat_wine.sh
 ```
 
-The script downloads Wine 11 into `~/Library/Application Support/com.isaacmarovitz.Whisky/Compatibility/SteamWine`,
-then stores the override paths in `com.isaacmarovitz.Whisky` defaults so Steam launches use that runtime automatically.
+The script downloads Wine 11 into `~/Library/Application Support/com.isaacmarovitz.Vector/Compatibility/SteamWine`,
+then stores the override paths in `com.isaacmarovitz.Vector` defaults so Steam launches use that runtime automatically.
 
 Compatibility-runtime Steam launches use a lean argument set by default for better responsiveness.
 If a machine needs conservative startup flags, enable safe mode:
 
 ```bash
-defaults write com.isaacmarovitz.Whisky steamForceSafeLaunchFlags -bool true
+defaults write com.isaacmarovitz.Vector steamForceSafeLaunchFlags -bool true
 ```
 
 ### Performance Defaults (Fork)
@@ -74,29 +74,29 @@ This fork applies game-focused Wine defaults:
 To temporarily restore verbose Wine logs for troubleshooting:
 
 ```bash
-defaults write com.isaacmarovitz.Whisky wineDebugLevel fixme-all
+defaults write com.isaacmarovitz.Vector wineDebugLevel fixme-all
 ```
 
 To revert to the optimized default:
 
 ```bash
-defaults delete com.isaacmarovitz.Whisky wineDebugLevel
+defaults delete com.isaacmarovitz.Vector wineDebugLevel
 ```
 
 ## Homebrew
 
-Whisky is on homebrew! Install with 
-`brew install --cask whisky`.
+Vector is on homebrew! Install with 
+`brew install --cask vector`.
 
 ## My game isn't working!
 
-Some games need special steps to get working. Check out the [wiki](https://github.com/IsaacMarovitz/Whisky/wiki/Game-Support).
+Some games need special steps to get working. Check out the [wiki](https://github.com/IsaacMarovitz/Vector/wiki/Game-Support).
 
 ---
 
 ## Credits & Acknowledgments
 
-Whisky is possible thanks to the magic of several projects:
+Vector is possible thanks to the magic of several projects:
 
 - [msync](https://github.com/marzent/wine-msync) by marzent
 - [DXVK-macOS](https://github.com/Gcenx/DXVK-macOS) by Gcenx and doitsujin
@@ -121,7 +121,7 @@ Special thanks to Gcenx, ohaiibuzzle, and Nat Brown for their support and contri
         </picture>
     </td>
     <td>
-        Whisky doesn't exist without CrossOver. Support the work of CodeWeavers using our <a href="https://www.codeweavers.com/store?ad=1010">affiliate link</a>.
+        Vector doesn't exist without CrossOver. Support the work of CodeWeavers using our <a href="https://www.codeweavers.com/store?ad=1010">affiliate link</a>.
     </td>
   </tr>
 </table>

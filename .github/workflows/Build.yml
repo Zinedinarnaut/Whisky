@@ -15,24 +15,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build WhiskyKit
+      - name: Build VectorKit
         run: |
-          cd WhiskyKit
+          cd VectorKit
           swift build
 
-      - name: Build Whisky app
+      - name: Build Vector app
         run: |
-          xcodebuild -project Whisky.xcodeproj \
-            -scheme Whisky \
+          xcodebuild -project Vector.xcodeproj \
+            -scheme Vector \
             -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Build WhiskyCmd
+      - name: Build VectorCmd
         run: |
-          xcodebuild -project Whisky.xcodeproj \
-            -scheme WhiskyCmd \
+          xcodebuild -project Vector.xcodeproj \
+            -scheme VectorCmd \
             -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \

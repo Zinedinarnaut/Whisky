@@ -27,18 +27,18 @@ scripts/runtime/install_steam_compat_wine.sh
 
 - Force conservative Steam flags:
 ```bash
-defaults write com.isaacmarovitz.Whisky steamForceSafeLaunchFlags -bool true
+defaults write com.isaacmarovitz.Vector steamForceSafeLaunchFlags -bool true
 ```
 
 - Return to lean Steam launch args:
 ```bash
-defaults delete com.isaacmarovitz.Whisky steamForceSafeLaunchFlags
+defaults delete com.isaacmarovitz.Vector steamForceSafeLaunchFlags
 ```
 
 - Clear runtime overrides:
 ```bash
-defaults delete com.isaacmarovitz.Whisky steamCompatibilityWineBinaryPath
-defaults delete com.isaacmarovitz.Whisky steamCompatibilityWineserverBinaryPath
+defaults delete com.isaacmarovitz.Vector steamCompatibilityWineBinaryPath
+defaults delete com.isaacmarovitz.Vector steamCompatibilityWineserverBinaryPath
 ```
 
 ## Known constraints

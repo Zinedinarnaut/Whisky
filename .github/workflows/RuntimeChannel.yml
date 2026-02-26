@@ -8,9 +8,9 @@ on:
         required: true
         type: string
       version_plist_url:
-        description: "URL to WhiskyWineVersion.plist"
+        description: "URL to VectorWineVersion.plist"
         required: false
-        default: "https://raw.githubusercontent.com/Whisky-App/wine/7.7/WhiskyWineVersion.plist"
+        default: "https://raw.githubusercontent.com/Vector-App/wine/7.7/VectorWineVersion.plist"
         type: string
       runtime_version:
         description: "Override runtime version (x.y.z). Leave empty to derive from plist"
@@ -70,7 +70,7 @@ jobs:
         run: |
           mkdir -p runtime/Wine .tmp/runtime
           curl -fL "${{ inputs.archive_url }}" -o .tmp/runtime/Libraries.tar.gz
-          curl -fL "${{ inputs.version_plist_url }}" -o runtime/Wine/WhiskyWineVersion.plist
+          curl -fL "${{ inputs.version_plist_url }}" -o runtime/Wine/VectorWineVersion.plist
 
       - name: Resolve runtime metadata
         id: runtime
@@ -80,7 +80,7 @@ jobs:
           if [ -n "${{ inputs.runtime_version }}" ]; then
             RUNTIME_VERSION="${{ inputs.runtime_version }}"
           else
-            RUNTIME_VERSION=$(plutil -convert json -o - runtime/Wine/WhiskyWineVersion.plist | jq -r '.version | "\(.major).\(.minor).\(.patch)"')
+            RUNTIME_VERSION=$(plutil -convert json -o - runtime/Wine/VectorWineVersion.plist | jq -r '.version | "\(.major).\(.minor).\(.patch)"')
           fi
 
           if ${{ inputs.publish_release }}; then
@@ -118,14 +118,14 @@ jobs:
           name: Runtime ${{ steps.runtime.outputs.runtime_version }}
           files: |
             .tmp/runtime/Libraries.tar.gz
-            runtime/Wine/WhiskyWineVersion.plist
+            runtime/Wine/VectorWineVersion.plist
             runtime/Wine/manifest.json
 
       - name: Commit runtime channel metadata
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/Wine/manifest.json runtime/Wine/WhiskyWineVersion.plist
+          git add runtime/Wine/manifest.json runtime/Wine/VectorWineVersion.plist
           if git diff --cached --quiet; then
             echo "No runtime metadata changes"
             exit 0
