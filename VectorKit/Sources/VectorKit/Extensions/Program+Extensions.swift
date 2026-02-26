@@ -33,6 +33,7 @@ extension Program {
     private static let steamUseLegacyBootstrapDefaultsKey = "steamUseLegacyBootstrap"
     private static let steamForceNoBrowserDefaultsKey = "steamForceNoBrowser"
     private static let steamUseLegacyExtraFlagsDefaultsKey = "steamUseLegacyExtraFlags"
+    private static let steamBootstrapExitArgument = "-exitsteam"
     private static let steamSafeLaunchArguments = [
         "-cef-disable-gpu",
         "-cef-disable-gpu-compositing",
@@ -78,6 +79,16 @@ extension Program {
                 try await Wine.runProgram(
                     at: self.url, args: arguments, bottle: self.bottle, environment: environment
                 )
+
+                if self.shouldRunSteamPostBootstrapPass(from: arguments) {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    try await Wine.runProgram(
+                        at: self.url,
+                        args: self.runtimeArguments(),
+                        bottle: self.bottle,
+                        environment: environment
+                    )
+                }
             } catch {
                 await MainActor.run {
                     self.showRunError(message: error.localizedDescription)
@@ -165,6 +176,16 @@ extension Program {
         for argument in newArguments
         where !arguments.contains(where: { $0.caseInsensitiveCompare(argument) == .orderedSame }) {
             arguments.append(argument)
+        }
+    }
+
+    private func shouldRunSteamPostBootstrapPass(from arguments: [String]) -> Bool {
+        guard isSteamProgram else {
+            return false
+        }
+
+        return arguments.contains {
+            $0.caseInsensitiveCompare(Self.steamBootstrapExitArgument) == .orderedSame
         }
     }
 
