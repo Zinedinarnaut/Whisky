@@ -67,12 +67,19 @@ extension Program {
     }
 
     func resetSteamWineserver(environment: [String: String]) async throws {
-        guard VectorWineInstaller.steamCompatibilityWineBinary() != nil else {
-            return
-        }
-
+        // Always terminate the default wineserver for this prefix first to avoid
+        // cross-version server reuse when switching runtimes.
         for await _ in try Wine.runWineserverProcess(
-            name: "steam-prelaunch-wineserver-kill",
+            name: "steam-prelaunch-wineserver-kill-default",
+            args: ["-k"],
+            bottle: bottle
+        ) { }
+
+        guard VectorWineInstaller.steamCompatibilityWineBinary() != nil else { return }
+
+        // Then terminate the compatibility runtime wineserver if present.
+        for await _ in try Wine.runWineserverProcess(
+            name: "steam-prelaunch-wineserver-kill-compat",
             args: ["-k"],
             bottle: bottle,
             environment: environment
