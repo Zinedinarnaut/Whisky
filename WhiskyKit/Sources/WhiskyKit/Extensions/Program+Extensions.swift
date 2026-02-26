@@ -28,7 +28,8 @@ extension Program {
         "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
     private static let steamBootstrapMarkerFilename = ".whisky-steam-bootstrap-v1"
     private static let steamHTMLCacheResetMarkerFilename = ".whisky-steam-htmlcache-reset-v1"
-    private static let steamSafeLaunchArguments = [
+    private static let steamForceSafeLaunchFlagsDefaultsKey = "steamForceSafeLaunchFlags"
+    private static let steamLegacySafeLaunchArguments = [
         "-cef-disable-gpu",
         "-cef-disable-gpu-compositing",
         "-cef-disable-d3d11",
@@ -138,9 +139,13 @@ extension Program {
             return arguments
         }
 
+        let usingCompatibilityRuntime = isUsingSteamCompatibilityRuntime
         resetSteamHTMLCacheIfNeeded()
-        appendUnique(arguments: &arguments, newArguments: Self.steamSafeLaunchArguments)
-        if WhiskyWineInstaller.steamCompatibilityWineBinary() == nil {
+        appendUnique(
+            arguments: &arguments,
+            newArguments: steamLaunchArguments(usingCompatibilityRuntime: usingCompatibilityRuntime)
+        )
+        if !usingCompatibilityRuntime {
             appendUnique(arguments: &arguments, newArguments: steamBootstrapCompatibilityArguments())
         }
 
@@ -160,6 +165,18 @@ extension Program {
 
     private var isUsingSteamCompatibilityRuntime: Bool {
         WhiskyWineInstaller.steamCompatibilityWineBinary() != nil
+    }
+
+    private func steamLaunchArguments(usingCompatibilityRuntime: Bool) -> [String] {
+        if usingCompatibilityRuntime && !shouldForceSteamSafeLaunchFlags() {
+            return []
+        }
+
+        return Self.steamLegacySafeLaunchArguments
+    }
+
+    private func shouldForceSteamSafeLaunchFlags() -> Bool {
+        UserDefaults.standard.bool(forKey: Self.steamForceSafeLaunchFlagsDefaultsKey)
     }
 
     private func steamBootstrapCompatibilityArguments() -> [String] {

@@ -55,6 +55,13 @@ scripts/runtime/install_steam_compat_wine.sh
 The script downloads Wine 11 into `~/Library/Application Support/com.isaacmarovitz.Whisky/Compatibility/SteamWine`,
 then stores the override paths in `com.isaacmarovitz.Whisky` defaults so Steam launches use that runtime automatically.
 
+Compatibility-runtime Steam launches use a lean argument set by default for better responsiveness.
+If a machine needs conservative startup flags, enable safe mode:
+
+```bash
+defaults write com.isaacmarovitz.Whisky steamForceSafeLaunchFlags -bool true
+```
+
 ## Homebrew
 
 Whisky is on homebrew! Install with 
