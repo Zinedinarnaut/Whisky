@@ -349,7 +349,7 @@ extension Program {
 
     private func runSteamInWine(arguments: [String], environment: [String: String]) async throws {
         try await resetSteamWineserver(environment: environment)
-        var launchStatus = try await Wine.runProgramWithTerminationStatus(
+        var launchStatus = try await Wine.runProgramDirectWithTerminationStatus(
             at: self.url,
             args: arguments,
             bottle: self.bottle,
@@ -359,7 +359,7 @@ extension Program {
         if shouldRunSteamPostBootstrapPass(from: arguments) {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             let postBootstrapArguments = runtimeArguments()
-            launchStatus = try await Wine.runProgramWithTerminationStatus(
+            launchStatus = try await Wine.runProgramDirectWithTerminationStatus(
                 at: self.url,
                 args: postBootstrapArguments,
                 bottle: self.bottle,
@@ -382,7 +382,7 @@ extension Program {
         )
         try await resetSteamWineserver(environment: environment)
         try? await Task.sleep(nanoseconds: 500_000_000)
-        _ = try await Wine.runProgramWithTerminationStatus(
+        _ = try await Wine.runProgramDirectWithTerminationStatus(
             at: self.url,
             args: recoveryArguments,
             bottle: self.bottle,

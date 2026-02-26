@@ -315,6 +315,31 @@ public class Wine {
     }
 }
 
+public extension Wine {
+    /// Execute `wine {path_to_exe} {args...}` and return launcher process termination status
+    static func runProgramDirectWithTerminationStatus(
+        at url: URL, args: [String] = [], bottle: Bottle, environment: [String: String] = [:]
+    ) async throws -> Int32 {
+        if bottle.settings.dxvk {
+            try enableDXVK(bottle: bottle)
+        }
+
+        var terminationStatus: Int32 = 0
+        for await output in try Self.runWineProcess(
+            name: url.lastPathComponent,
+            args: [url.path(percentEncoded: false)] + args,
+            bottle: bottle,
+            environment: environment
+        ) {
+            if case .terminated(let process) = output {
+                terminationStatus = process.terminationStatus
+            }
+        }
+
+        return terminationStatus
+    }
+}
+
 private extension Wine {
     static func resolvedWineDebugLevel() -> String {
         guard let configuredLevel = UserDefaults.standard.string(forKey: wineDebugLevelDefaultsKey)?

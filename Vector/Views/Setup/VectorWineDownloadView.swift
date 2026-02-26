@@ -47,19 +47,7 @@ struct VectorWineDownloadView: View {
                     ProgressView(value: fractionProgress, total: 1)
                     HStack {
                         HStack {
-                            let progressText = String(
-                                format: String(localized: "setup.vectorwine.progress"),
-                                formatBytes(bytes: completedBytes),
-                                formatBytes(bytes: totalBytes)
-                            )
-                            let etaText = shouldShowEstimate()
-                                ? String(
-                                    format: String(localized: "setup.vectorwine.eta"),
-                                    formatRemainingTime(remainingBytes: totalBytes - completedBytes)
-                                )
-                                : ""
-
-                            Text("\(progressText)\(etaText.isEmpty ? "" : " \(etaText)")")
+                            Text(verbatim: formattedProgressStatusText())
                             Spacer()
                         }
                         .font(.subheadline)
@@ -119,6 +107,23 @@ struct VectorWineDownloadView: View {
         } else {
             return ""
         }
+    }
+
+    func formattedProgressStatusText() -> String {
+        let progressText = String(
+            format: String(localized: "setup.vectorwine.progress"),
+            formatBytes(bytes: completedBytes),
+            formatBytes(bytes: totalBytes)
+        )
+        guard shouldShowEstimate() else {
+            return progressText
+        }
+
+        let etaText = String(
+            format: String(localized: "setup.vectorwine.eta"),
+            formatRemainingTime(remainingBytes: totalBytes - completedBytes)
+        )
+        return "\(progressText) \(etaText)"
     }
 
     func startDownload() {
