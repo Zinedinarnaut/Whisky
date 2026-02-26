@@ -120,15 +120,34 @@ public class Wine {
     public static func runProgram(
         at url: URL, args: [String] = [], bottle: Bottle, environment: [String: String] = [:]
     ) async throws {
+        _ = try await runProgramWithTerminationStatus(
+            at: url,
+            args: args,
+            bottle: bottle,
+            environment: environment
+        )
+    }
+
+    /// Execute a `wine start /unix {url}` command and return the launcher process termination status
+    public static func runProgramWithTerminationStatus(
+        at url: URL, args: [String] = [], bottle: Bottle, environment: [String: String] = [:]
+    ) async throws -> Int32 {
         if bottle.settings.dxvk {
             try enableDXVK(bottle: bottle)
         }
 
-        for await _ in try Self.runWineProcess(
+        var terminationStatus: Int32 = 0
+        for await output in try Self.runWineProcess(
             name: url.lastPathComponent,
             args: ["start", "/unix", url.path(percentEncoded: false)] + args,
             bottle: bottle, environment: environment
-        ) { }
+        ) {
+            if case .terminated(let process) = output {
+                terminationStatus = process.terminationStatus
+            }
+        }
+
+        return terminationStatus
     }
 
     public static func generateRunCommand(

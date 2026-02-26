@@ -25,8 +25,8 @@ extension Program {
     private static let wineserverBinaryOverrideEnvironmentKey = "VECTOR_WINESERVER_BIN_OVERRIDE"
     private static let steamExecutable = "steam.exe"
     private static let steamPackageArchiveURL =
-        "http://web.archive.org/web/20240520if_/media.steampowered.com/client"
-    private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v2"
+        "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
+    private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v3"
     private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v3"
     private static let steamDisableSafeFlagsDefaultsKey = "steamDisableAutoSafeLaunchFlags"
     private static let steamLegacyCompatDefaultsKey = "steamLegacyCompatMode"
@@ -76,15 +76,12 @@ extension Program {
 
         Task.detached(priority: .userInitiated) {
             do {
-                try await Wine.runProgram(
-                    at: self.url, args: arguments, bottle: self.bottle, environment: environment
-                )
-
-                if self.shouldRunSteamPostBootstrapPass(from: arguments) {
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if self.isSteamProgram {
+                    try await self.runSteamInWine(arguments: arguments, environment: environment)
+                } else {
                     try await Wine.runProgram(
                         at: self.url,
-                        args: self.runtimeArguments(),
+                        args: arguments,
                         bottle: self.bottle,
                         environment: environment
                     )
@@ -348,5 +345,106 @@ extension Program {
 
         environment[Self.wineBinaryOverrideEnvironmentKey] = wineBinary.path(percentEncoded: false)
         environment[Self.wineserverBinaryOverrideEnvironmentKey] = wineserverBinary.path(percentEncoded: false)
+    }
+
+    private func runSteamInWine(arguments: [String], environment: [String: String]) async throws {
+        try await resetSteamWineserver(environment: environment)
+        var launchStatus = try await Wine.runProgramWithTerminationStatus(
+            at: self.url,
+            args: arguments,
+            bottle: self.bottle,
+            environment: environment
+        )
+
+        if shouldRunSteamPostBootstrapPass(from: arguments) {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            let postBootstrapArguments = runtimeArguments()
+            launchStatus = try await Wine.runProgramWithTerminationStatus(
+                at: self.url,
+                args: postBootstrapArguments,
+                bottle: self.bottle,
+                environment: environment
+            )
+        }
+
+        guard launchStatus != 0 else {
+            return
+        }
+
+        let latestArguments = runtimeArguments()
+        let recoveryArguments = steamRecoveryArguments(from: latestArguments)
+        guard !isSameArguments(lhs: recoveryArguments, rhs: latestArguments) else {
+            return
+        }
+
+        Logger.wineKit.warning(
+            "Steam exited with status \(launchStatus, privacy: .public). Retrying with reduced compatibility arguments."
+        )
+        try await resetSteamWineserver(environment: environment)
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        _ = try await Wine.runProgramWithTerminationStatus(
+            at: self.url,
+            args: recoveryArguments,
+            bottle: self.bottle,
+            environment: environment
+        )
+    }
+
+    private func steamRecoveryArguments(from arguments: [String]) -> [String] {
+        var recoveredArguments: [String] = []
+        var skipNext = false
+
+        for argument in arguments {
+            if skipNext {
+                skipNext = false
+                continue
+            }
+
+            if argument.caseInsensitiveCompare("-overridepackageurl") == .orderedSame {
+                skipNext = true
+                continue
+            }
+
+            if argument.caseInsensitiveCompare("-noverifyfiles") == .orderedSame
+                || argument.caseInsensitiveCompare("-nobootstrapupdate") == .orderedSame
+                || argument.caseInsensitiveCompare("-skipinitialbootstrap") == .orderedSame
+                || argument.caseInsensitiveCompare("-norepairfiles") == .orderedSame
+                || argument.caseInsensitiveCompare("-forcesteamupdate") == .orderedSame
+                || argument.caseInsensitiveCompare("-forcepackagedownload") == .orderedSame
+                || argument.caseInsensitiveCompare(Self.steamBootstrapExitArgument) == .orderedSame
+                || argument.caseInsensitiveCompare("-no-browser") == .orderedSame {
+                continue
+            }
+
+            recoveredArguments.append(argument)
+        }
+
+        return recoveredArguments
+    }
+
+    private func isSameArguments(lhs: [String], rhs: [String]) -> Bool {
+        guard lhs.count == rhs.count else {
+            return false
+        }
+
+        for (left, right) in zip(lhs, rhs)
+        where left.caseInsensitiveCompare(right) != .orderedSame {
+            return false
+        }
+
+        return true
+    }
+
+    private func resetSteamWineserver(environment: [String: String]) async throws {
+        guard isUsingSteamCompatibilityRuntime else {
+            return
+        }
+
+        for await _ in try Wine.runWineserverProcess(
+            name: "steam-prelaunch-wineserver-kill",
+            args: ["-k"],
+            bottle: bottle,
+            environment: environment
+        ) { }
     }
 }
