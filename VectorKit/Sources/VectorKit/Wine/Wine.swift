@@ -239,22 +239,6 @@ public class Wine {
         return result.joined()
     }
 
-    public static func wineVersion() async throws -> String {
-        var output = try await runWine(["--version"], bottle: nil)
-        output.replace("wine-", with: "")
-
-        // Deal with WineCX version names
-        if let index = output.firstIndex(where: { $0.isWhitespace }) {
-            return String(output.prefix(upTo: index))
-        }
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    @discardableResult
-    public static func runBatchFile(url: URL, bottle: Bottle) async throws -> String {
-        return try await runWine(["cmd", "/c", url.path(percentEncoded: false)], bottle: bottle)
-    }
-
     public static func killBottle(bottle: Bottle) throws {
         Task.detached(priority: .userInitiated) {
             _ = try await runWineserver(["-k"], bottle: bottle)

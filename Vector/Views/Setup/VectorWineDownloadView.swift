@@ -47,14 +47,19 @@ struct VectorWineDownloadView: View {
                     ProgressView(value: fractionProgress, total: 1)
                     HStack {
                         HStack {
-                            Text(String(format: String(localized: "setup.vectorwine.progress"),
-                                        formatBytes(bytes: completedBytes),
-                                        formatBytes(bytes: totalBytes)))
-                            + Text(String(" "))
-                            + (shouldShowEstimate() ?
-                               Text(String(format: String(localized: "setup.vectorwine.eta"),
-                                           formatRemainingTime(remainingBytes: totalBytes - completedBytes)))
-                               : Text(String()))
+                            let progressText = String(
+                                format: String(localized: "setup.vectorwine.progress"),
+                                formatBytes(bytes: completedBytes),
+                                formatBytes(bytes: totalBytes)
+                            )
+                            let etaText = shouldShowEstimate()
+                                ? String(
+                                    format: String(localized: "setup.vectorwine.eta"),
+                                    formatRemainingTime(remainingBytes: totalBytes - completedBytes)
+                                )
+                                : ""
+
+                            Text("\(progressText)\(etaText.isEmpty ? "" : " \(etaText)")")
                             Spacer()
                         }
                         .font(.subheadline)
