@@ -22,12 +22,31 @@ import os.log
 
 extension Program {
     private static let steamExecutable = "steam.exe"
+    private static let steamPackageArchiveURL =
+        "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
+    private static let steamBootstrapMarkerFilename = ".whisky-steam-bootstrap-v1"
     private static let steamSafeLaunchArguments = [
         "-no-browser",
         "-cef-disable-gpu",
         "-cef-disable-gpu-compositing",
         "-cef-disable-d3d11",
-        "-no-cef-sandbox"
+        "-no-cef-sandbox",
+        "-cef-force-32bit"
+    ]
+    private static let steamBootstrapArguments = [
+        "-forcesteamupdate",
+        "-forcepackagedownload",
+        "-overridepackageurl",
+        steamPackageArchiveURL,
+        "-exitsteam"
+    ]
+    private static let steamPinnedBootstrapArguments = [
+        "-noverifyfiles",
+        "-nobootstrapupdate",
+        "-skipinitialbootstrap",
+        "-norepairfiles",
+        "-overridepackageurl",
+        steamPackageArchiveURL
     ]
 
     public func run() {
@@ -107,15 +126,47 @@ extension Program {
             return arguments
         }
 
-        for argument in Self.steamSafeLaunchArguments
-        where !arguments.contains(where: { $0.caseInsensitiveCompare(argument) == .orderedSame }) {
-            arguments.append(argument)
-        }
+        appendUnique(arguments: &arguments, newArguments: Self.steamSafeLaunchArguments)
+        appendUnique(arguments: &arguments, newArguments: steamBootstrapCompatibilityArguments())
 
         return arguments
     }
 
     private var isSteamProgram: Bool {
         url.lastPathComponent.caseInsensitiveCompare(Self.steamExecutable) == .orderedSame
+    }
+
+    private func appendUnique(arguments: inout [String], newArguments: [String]) {
+        for argument in newArguments
+        where !arguments.contains(where: { $0.caseInsensitiveCompare(argument) == .orderedSame }) {
+            arguments.append(argument)
+        }
+    }
+
+    private func steamBootstrapCompatibilityArguments() -> [String] {
+        guard let markerURL = steamBootstrapMarkerURL() else {
+            return Self.steamPinnedBootstrapArguments
+        }
+
+        let markerPath = markerURL.path(percentEncoded: false)
+        if FileManager.default.fileExists(atPath: markerPath) {
+            return Self.steamPinnedBootstrapArguments
+        }
+
+        let created = FileManager.default.createFile(atPath: markerPath, contents: Data())
+        if !created {
+            Logger.wineKit.warning("Failed to create Steam bootstrap marker at \(markerPath, privacy: .public)")
+        }
+
+        return Self.steamBootstrapArguments
+    }
+
+    private func steamBootstrapMarkerURL() -> URL? {
+        let steamDirectory = url.deletingLastPathComponent()
+        guard FileManager.default.fileExists(atPath: steamDirectory.path(percentEncoded: false)) else {
+            return nil
+        }
+
+        return steamDirectory.appending(path: Self.steamBootstrapMarkerFilename)
     }
 }
