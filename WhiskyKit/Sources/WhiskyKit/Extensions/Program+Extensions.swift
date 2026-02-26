@@ -25,6 +25,7 @@ extension Program {
     private static let steamPackageArchiveURL =
         "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
     private static let steamBootstrapMarkerFilename = ".whisky-steam-bootstrap-v1"
+    private static let steamHTMLCacheResetMarkerFilename = ".whisky-steam-htmlcache-reset-v1"
     private static let steamSafeLaunchArguments = [
         "-cef-disable-gpu",
         "-cef-disable-gpu-compositing",
@@ -128,6 +129,7 @@ extension Program {
             return arguments
         }
 
+        resetSteamHTMLCacheIfNeeded()
         appendUnique(arguments: &arguments, newArguments: Self.steamSafeLaunchArguments)
         appendUnique(arguments: &arguments, newArguments: steamBootstrapCompatibilityArguments())
 
@@ -164,11 +166,75 @@ extension Program {
     }
 
     private func steamBootstrapMarkerURL() -> URL? {
+        steamMarkerURL(filename: Self.steamBootstrapMarkerFilename)
+    }
+
+    private func steamHTMLCacheResetMarkerURL() -> URL? {
+        steamMarkerURL(filename: Self.steamHTMLCacheResetMarkerFilename)
+    }
+
+    private func steamMarkerURL(filename: String) -> URL? {
         let steamDirectory = url.deletingLastPathComponent()
         guard FileManager.default.fileExists(atPath: steamDirectory.path(percentEncoded: false)) else {
             return nil
         }
 
-        return steamDirectory.appending(path: Self.steamBootstrapMarkerFilename)
+        return steamDirectory.appending(path: filename)
+    }
+
+    private func resetSteamHTMLCacheIfNeeded() {
+        guard let markerURL = steamHTMLCacheResetMarkerURL() else {
+            return
+        }
+
+        let markerPath = markerURL.path(percentEncoded: false)
+        if FileManager.default.fileExists(atPath: markerPath) {
+            return
+        }
+
+        clearSteamHTMLCache()
+
+        let created = FileManager.default.createFile(atPath: markerPath, contents: Data())
+        if !created {
+            Logger.wineKit.warning("Failed to create Steam cache reset marker at \(markerPath, privacy: .public)")
+        }
+    }
+
+    private func clearSteamHTMLCache() {
+        let usersDirectory = bottle.url
+            .appending(path: "drive_c")
+            .appending(path: "users")
+
+        guard let userDirectories = try? FileManager.default.contentsOfDirectory(
+            at: usersDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        for userDirectory in userDirectories {
+            let htmlCacheDirectory = userDirectory
+                .appending(path: "AppData")
+                .appending(path: "Local")
+                .appending(path: "Steam")
+                .appending(path: "htmlcache")
+
+            let cachePath = htmlCacheDirectory.path(percentEncoded: false)
+            guard FileManager.default.fileExists(atPath: cachePath) else {
+                continue
+            }
+
+            do {
+                try FileManager.default.removeItem(at: htmlCacheDirectory)
+            } catch {
+                Logger.wineKit.warning(
+                    "Failed to remove Steam htmlcache at \(cachePath, privacy: .public)"
+                )
+                Logger.wineKit.warning(
+                    "Steam htmlcache removal error: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
     }
 }
