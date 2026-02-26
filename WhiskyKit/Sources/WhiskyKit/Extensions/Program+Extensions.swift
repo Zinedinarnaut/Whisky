@@ -126,7 +126,7 @@ extension Program {
             return environment
         }
 
-        sanitizeSteamEnvironment(&environment)
+        sanitizeSteamEnvironment(&environment, usingCompatibilityRuntime: isUsingSteamCompatibilityRuntime)
         injectSteamCompatibilityWineOverride(&environment)
         return environment
     }
@@ -156,6 +156,10 @@ extension Program {
         where !arguments.contains(where: { $0.caseInsensitiveCompare(argument) == .orderedSame }) {
             arguments.append(argument)
         }
+    }
+
+    private var isUsingSteamCompatibilityRuntime: Bool {
+        WhiskyWineInstaller.steamCompatibilityWineBinary() != nil
     }
 
     private func steamBootstrapCompatibilityArguments() -> [String] {
@@ -249,7 +253,15 @@ extension Program {
         }
     }
 
-    private func sanitizeSteamEnvironment(_ environment: inout [String: String]) {
+    private func sanitizeSteamEnvironment(
+        _ environment: inout [String: String],
+        usingCompatibilityRuntime: Bool
+    ) {
+        if usingCompatibilityRuntime {
+            // Preserve bottle graphics env so game processes launched by Steam keep DXVK/D3D11 support.
+            return
+        }
+
         environment["LC_ALL"] = "C"
         environment["LANG"] = "C"
         environment.removeValue(forKey: "LANGUAGE")
