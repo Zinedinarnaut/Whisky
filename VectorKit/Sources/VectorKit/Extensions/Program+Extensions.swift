@@ -27,7 +27,7 @@ extension Program {
     private static let steamPackageArchiveURL =
         "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
     private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v3"
-    private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v3"
+    private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v4"
     private static let steamDisableSafeFlagsDefaultsKey = "steamDisableAutoSafeLaunchFlags"
     private static let steamLegacyCompatDefaultsKey = "steamLegacyCompatMode"
     private static let steamUseLegacyBootstrapDefaultsKey = "steamUseLegacyBootstrap"
