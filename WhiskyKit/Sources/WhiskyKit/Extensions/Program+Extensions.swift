@@ -26,12 +26,14 @@ extension Program {
         "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
     private static let steamBootstrapMarkerFilename = ".whisky-steam-bootstrap-v1"
     private static let steamSafeLaunchArguments = [
-        "-no-browser",
         "-cef-disable-gpu",
         "-cef-disable-gpu-compositing",
         "-cef-disable-d3d11",
+        "-cef-disable-breakpad",
         "-no-cef-sandbox",
-        "-cef-force-32bit"
+        "-cef-force-32bit",
+        "-nocrashmonitor",
+        "-noshaders"
     ]
     private static let steamBootstrapArguments = [
         "-forcesteamupdate",
