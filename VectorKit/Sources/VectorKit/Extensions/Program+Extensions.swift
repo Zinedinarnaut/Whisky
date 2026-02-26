@@ -29,6 +29,7 @@ extension Program {
     private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v1"
     private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v2"
     private static let steamDisableSafeFlagsDefaultsKey = "steamDisableAutoSafeLaunchFlags"
+    private static let steamLegacyCompatDefaultsKey = "steamLegacyCompatMode"
     private static let steamUseLegacyBootstrapDefaultsKey = "steamUseLegacyBootstrap"
     private static let steamForceNoBrowserDefaultsKey = "steamForceNoBrowser"
     private static let steamUseLegacyExtraFlagsDefaultsKey = "steamUseLegacyExtraFlags"
@@ -177,10 +178,11 @@ extension Program {
         }
 
         var arguments = Self.steamSafeLaunchArguments
-        if UserDefaults.standard.bool(forKey: Self.steamUseLegacyExtraFlagsDefaultsKey) {
+        if isSteamLegacyCompatModeEnabled()
+            || UserDefaults.standard.bool(forKey: Self.steamUseLegacyExtraFlagsDefaultsKey) {
             arguments.append(contentsOf: Self.steamLegacyExtraLaunchArguments)
         }
-        if UserDefaults.standard.bool(forKey: Self.steamForceNoBrowserDefaultsKey) {
+        if isSteamLegacyCompatModeEnabled() || UserDefaults.standard.bool(forKey: Self.steamForceNoBrowserDefaultsKey) {
             arguments.append("-no-browser")
         }
         return arguments
@@ -191,7 +193,20 @@ extension Program {
             return false
         }
 
+        if isSteamLegacyCompatModeEnabled() {
+            return true
+        }
+
         return UserDefaults.standard.bool(forKey: Self.steamUseLegacyBootstrapDefaultsKey)
+    }
+
+    private func isSteamLegacyCompatModeEnabled() -> Bool {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: Self.steamLegacyCompatDefaultsKey) == nil {
+            return true
+        }
+
+        return defaults.bool(forKey: Self.steamLegacyCompatDefaultsKey)
     }
 
     private func steamBootstrapCompatibilityArguments() -> [String] {
