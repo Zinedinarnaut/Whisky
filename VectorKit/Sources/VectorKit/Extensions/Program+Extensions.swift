@@ -31,12 +31,15 @@ extension Program {
     private static let steamDisableSafeFlagsDefaultsKey = "steamDisableAutoSafeLaunchFlags"
     private static let steamUseLegacyBootstrapDefaultsKey = "steamUseLegacyBootstrap"
     private static let steamForceNoBrowserDefaultsKey = "steamForceNoBrowser"
+    private static let steamUseLegacyExtraFlagsDefaultsKey = "steamUseLegacyExtraFlags"
     private static let steamSafeLaunchArguments = [
         "-cef-disable-gpu",
         "-cef-disable-gpu-compositing",
         "-cef-disable-d3d11",
+        "-no-cef-sandbox"
+    ]
+    private static let steamLegacyExtraLaunchArguments = [
         "-cef-disable-breakpad",
-        "-no-cef-sandbox",
         "-cef-force-32bit",
         "-nocrashmonitor",
         "-noshaders"
@@ -174,6 +177,9 @@ extension Program {
         }
 
         var arguments = Self.steamSafeLaunchArguments
+        if UserDefaults.standard.bool(forKey: Self.steamUseLegacyExtraFlagsDefaultsKey) {
+            arguments.append(contentsOf: Self.steamLegacyExtraLaunchArguments)
+        }
         if UserDefaults.standard.bool(forKey: Self.steamForceNoBrowserDefaultsKey) {
             arguments.append("-no-browser")
         }

@@ -23,7 +23,8 @@ public extension VectorWineInstaller {
         resolveSteamCompatibilityExecutable(
             environmentKey: "VECTOR_STEAM_WINE_BIN",
             defaultsKey: "steamCompatibilityWineBinaryPath",
-            defaultLeafPath: "wine"
+            defaultLeafPath: "wine",
+            fallbackLeafPaths: ["wine64"]
         )
     }
 
@@ -37,6 +38,10 @@ public extension VectorWineInstaller {
 }
 
 private extension VectorWineInstaller {
+    static var gamePortingToolkitWineBinFolder: URL {
+        URL(filePath: "/Applications/Game Porting Toolkit.app/Contents/Resources/wine/bin")
+    }
+
     static var defaultSteamCompatibilityWineFolder: URL {
         applicationFolder
             .appending(path: "Compatibility")
@@ -44,7 +49,8 @@ private extension VectorWineInstaller {
     }
 
     static func resolveSteamCompatibilityExecutable(
-        environmentKey: String, defaultsKey: String, defaultLeafPath: String
+        environmentKey: String, defaultsKey: String, defaultLeafPath: String,
+        fallbackLeafPaths: [String] = []
     ) -> URL? {
         let environment = ProcessInfo.processInfo.environment
         let overridePath = environment[environmentKey] ?? UserDefaults.standard.string(forKey: defaultsKey)
@@ -55,15 +61,33 @@ private extension VectorWineInstaller {
             return FileManager.default.isExecutableFile(atPath: path) ? overrideURL : nil
         }
 
-        let defaultURL = defaultSteamCompatibilityWineFolder
+        var candidateURLs: [URL] = []
+
+        let packagedRoot = defaultSteamCompatibilityWineFolder
             .appending(path: "Wine Stable.app")
             .appending(path: "Contents")
             .appending(path: "Resources")
             .appending(path: "wine")
             .appending(path: "bin")
-            .appending(path: defaultLeafPath)
 
-        let defaultPath = defaultURL.path(percentEncoded: false)
-        return FileManager.default.isExecutableFile(atPath: defaultPath) ? defaultURL : nil
+        candidateURLs.append(packagedRoot.appending(path: defaultLeafPath))
+        for fallbackLeafPath in fallbackLeafPaths {
+            candidateURLs.append(packagedRoot.appending(path: fallbackLeafPath))
+        }
+
+        let gptkRoot = gamePortingToolkitWineBinFolder
+        candidateURLs.append(gptkRoot.appending(path: defaultLeafPath))
+        for fallbackLeafPath in fallbackLeafPaths {
+            candidateURLs.append(gptkRoot.appending(path: fallbackLeafPath))
+        }
+
+        for candidateURL in candidateURLs {
+            let candidatePath = candidateURL.path(percentEncoded: false)
+            if FileManager.default.isExecutableFile(atPath: candidatePath) {
+                return candidateURL
+            }
+        }
+
+        return nil
     }
 }
