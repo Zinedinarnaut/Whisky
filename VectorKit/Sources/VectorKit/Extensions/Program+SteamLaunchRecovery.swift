@@ -19,6 +19,8 @@
 import Foundation
 
 extension Program {
+    private static let steamDisabledNativeDLLOverrides = "nvapi,nvapi64=d"
+
     func steamRecoveryArguments(from arguments: [String]) -> [String] {
         var recoveredArguments: [String] = []
         var skipNext = false
@@ -75,5 +77,23 @@ extension Program {
             bottle: bottle,
             environment: environment
         ) { }
+    }
+
+    func applySteamCompatibilityDLLOverrides(_ environment: inout [String: String]) {
+        guard VectorWineInstaller.steamCompatibilityWineBinary() != nil else {
+            return
+        }
+
+        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if current.localizedCaseInsensitiveContains("nvapi64")
+            || current.localizedCaseInsensitiveContains("nvapi") {
+            return
+        }
+
+        if current.isEmpty {
+            environment["WINEDLLOVERRIDES"] = Self.steamDisabledNativeDLLOverrides
+        } else {
+            environment["WINEDLLOVERRIDES"] = "\(current);\(Self.steamDisabledNativeDLLOverrides)"
+        }
     }
 }

@@ -137,12 +137,19 @@ extension Program {
 
     private func runtimeEnvironment() -> [String: String] {
         var environment = generateEnvironment()
-        guard isSteamProgram else {
-            return environment
+        if isSteamProgram {
+            sanitizeSteamEnvironment(&environment, usingCompatibilityRuntime: isUsingSteamCompatibilityRuntime)
         }
 
-        sanitizeSteamEnvironment(&environment, usingCompatibilityRuntime: isUsingSteamCompatibilityRuntime)
-        injectSteamCompatibilityWineOverride(&environment)
+        let normalizedPath = url.path(percentEncoded: false).lowercased()
+        let shouldUseSteamCompatRuntime =
+            isUsingSteamCompatibilityRuntime
+            && (normalizedPath.contains("/program files (x86)/steam/")
+                || normalizedPath.contains("/program files/steam/"))
+        if shouldUseSteamCompatRuntime {
+            applySteamCompatibilityDLLOverrides(&environment)
+            injectSteamCompatibilityWineOverride(&environment)
+        }
         return environment
     }
 
