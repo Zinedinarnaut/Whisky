@@ -44,6 +44,17 @@ This fork supports a signed runtime channel for `Libraries.tar.gz` updates.
 - Setup and publishing guide: [`docs/runtime-channel.md`](docs/runtime-channel.md)
 - Runtime metadata location in this repo: [`runtime/Wine`](runtime/Wine)
 
+### Steam Compatibility Runtime
+
+Steam can require a newer Wine build than the bundled runtime. This fork supports a Steam-specific override runtime:
+
+```bash
+scripts/runtime/install_steam_compat_wine.sh
+```
+
+The script downloads Wine 11 into `~/Library/Application Support/com.isaacmarovitz.Whisky/Compatibility/SteamWine`,
+then stores the override paths in `com.isaacmarovitz.Whisky` defaults so Steam launches use that runtime automatically.
+
 ## Homebrew
 
 Whisky is on homebrew! Install with 

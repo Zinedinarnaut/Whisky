@@ -21,6 +21,8 @@ import AppKit
 import os.log
 
 extension Program {
+    private static let wineBinaryOverrideEnvironmentKey = "WHISKY_WINE_BIN_OVERRIDE"
+    private static let wineserverBinaryOverrideEnvironmentKey = "WHISKY_WINESERVER_BIN_OVERRIDE"
     private static let steamExecutable = "steam.exe"
     private static let steamPackageArchiveURL =
         "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
@@ -119,7 +121,14 @@ extension Program {
     }
 
     private func runtimeEnvironment() -> [String: String] {
-        generateEnvironment()
+        var environment = generateEnvironment()
+        guard isSteamProgram else {
+            return environment
+        }
+
+        sanitizeSteamEnvironment(&environment)
+        injectSteamCompatibilityWineOverride(&environment)
+        return environment
     }
 
     private func runtimeArguments() -> [String] {
@@ -131,7 +140,9 @@ extension Program {
 
         resetSteamHTMLCacheIfNeeded()
         appendUnique(arguments: &arguments, newArguments: Self.steamSafeLaunchArguments)
-        appendUnique(arguments: &arguments, newArguments: steamBootstrapCompatibilityArguments())
+        if WhiskyWineInstaller.steamCompatibilityWineBinary() == nil {
+            appendUnique(arguments: &arguments, newArguments: steamBootstrapCompatibilityArguments())
+        }
 
         return arguments
     }
@@ -236,5 +247,26 @@ extension Program {
                 )
             }
         }
+    }
+
+    private func sanitizeSteamEnvironment(_ environment: inout [String: String]) {
+        environment["LC_ALL"] = "C"
+        environment["LANG"] = "C"
+        environment.removeValue(forKey: "LANGUAGE")
+        environment["DXVK_ASYNC"] = "0"
+        environment["DXVK_HUD"] = "0"
+        environment["DXVK_LOG_LEVEL"] = "none"
+        environment["WINEDLLOVERRIDES"] = ""
+        environment["ROSETTA_ADVERTISE_AVX"] = "0"
+    }
+
+    private func injectSteamCompatibilityWineOverride(_ environment: inout [String: String]) {
+        guard let wineBinary = WhiskyWineInstaller.steamCompatibilityWineBinary(),
+              let wineserverBinary = WhiskyWineInstaller.steamCompatibilityWineserverBinary() else {
+            return
+        }
+
+        environment[Self.wineBinaryOverrideEnvironmentKey] = wineBinary.path(percentEncoded: false)
+        environment[Self.wineserverBinaryOverrideEnvironmentKey] = wineserverBinary.path(percentEncoded: false)
     }
 }

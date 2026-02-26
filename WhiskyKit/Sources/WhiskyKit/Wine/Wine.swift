@@ -20,6 +20,9 @@ import Foundation
 import os.log
 
 public class Wine {
+    private static let wineBinaryOverrideEnvironmentKey = "WHISKY_WINE_BIN_OVERRIDE"
+    private static let wineserverBinaryOverrideEnvironmentKey = "WHISKY_WINESERVER_BIN_OVERRIDE"
+
     /// URL to the installed `DXVK` folder
     private static let dxvkFolder: URL = WhiskyWineInstaller.libraryFolder.appending(path: "DXVK")
     /// Path to the `wine64` binary
@@ -49,8 +52,15 @@ public class Wine {
         name: String? = nil, args: [String], environment: [String: String] = [:],
         fileHandle: FileHandle?
     ) throws -> AsyncStream<ProcessOutput> {
+        var environment = environment
+        let executableURL = resolveExecutable(
+            from: &environment,
+            overrideKey: wineBinaryOverrideEnvironmentKey,
+            fallback: wineBinary
+        )
+
         return try runProcess(
-            name: name, args: args, environment: environment, executableURL: wineBinary,
+            name: name, args: args, environment: environment, executableURL: executableURL,
             fileHandle: fileHandle
         )
     }
@@ -60,8 +70,15 @@ public class Wine {
         name: String? = nil, args: [String], environment: [String: String] = [:],
         fileHandle: FileHandle?
     ) throws -> AsyncStream<ProcessOutput> {
+        var environment = environment
+        let executableURL = resolveExecutable(
+            from: &environment,
+            overrideKey: wineserverBinaryOverrideEnvironmentKey,
+            fallback: wineserverBinary
+        )
+
         return try runProcess(
-            name: name, args: args, environment: environment, executableURL: wineserverBinary,
+            name: name, args: args, environment: environment, executableURL: executableURL,
             fileHandle: fileHandle
         )
     }
@@ -114,8 +131,14 @@ public class Wine {
     public static func generateRunCommand(
         at url: URL, bottle: Bottle, args: String, environment: [String: String]
     ) -> String {
-        var wineCmd = "\(wineBinary.esc) start /unix \(url.esc) \(args)"
-        let env = constructWineEnvironment(for: bottle, environment: environment)
+        var env = constructWineEnvironment(for: bottle, environment: environment)
+        let executableURL = resolveExecutable(
+            from: &env,
+            overrideKey: wineBinaryOverrideEnvironmentKey,
+            fallback: wineBinary
+        )
+
+        var wineCmd = "\(executableURL.esc) start /unix \(url.esc) \(args)"
         for environment in env {
             wineCmd = "\(environment.key)=\"\(environment.value)\" " + wineCmd
         }
@@ -148,10 +171,12 @@ public class Wine {
     }
 
     /// Run a `wineserver` command with the given arguments and return the output result
-    private static func runWineserver(_ args: [String], bottle: Bottle) async throws -> String {
+    private static func runWineserver(
+        _ args: [String], bottle: Bottle, environment: [String: String] = [:]
+    ) async throws -> String {
         var result: [ProcessOutput] = []
 
-        for await output in try Self.runWineserverProcess(args: args, bottle: bottle, environment: [:]) {
+        for await output in try Self.runWineserverProcess(args: args, bottle: bottle, environment: environment) {
             result.append(output)
         }
 
@@ -210,7 +235,15 @@ public class Wine {
 
     public static func killBottle(bottle: Bottle) throws {
         Task.detached(priority: .userInitiated) {
-            try await runWineserver(["-k"], bottle: bottle)
+            _ = try await runWineserver(["-k"], bottle: bottle)
+
+            if let steamWineserver = WhiskyWineInstaller.steamCompatibilityWineserverBinary() {
+                _ = try? await runWineserver(
+                    ["-k"],
+                    bottle: bottle,
+                    environment: [wineserverBinaryOverrideEnvironmentKey: steamWineserver.path(percentEncoded: false)]
+                )
+            }
         }
     }
 
@@ -253,146 +286,26 @@ public class Wine {
         result.merge(environment, uniquingKeysWith: { $1 })
         return result
     }
-}
 
-enum WineInterfaceError: Error {
-    case invalidResponce
-}
-
-enum RegistryType: String {
-    case binary = "REG_BINARY"
-    case dword = "REG_DWORD"
-    case qword = "REG_QWORD"
-    case string = "REG_SZ"
-}
-
-extension Wine {
-    public static let logsFolder = FileManager.default.urls(
-        for: .libraryDirectory, in: .userDomainMask
-    )[0].appending(path: "Logs").appending(path: Bundle.whiskyBundleIdentifier)
-
-    public static func makeFileHandle() throws -> FileHandle {
-        if !FileManager.default.fileExists(atPath: Self.logsFolder.path) {
-            try FileManager.default.createDirectory(at: Self.logsFolder, withIntermediateDirectories: true)
+    private static func resolveExecutable(
+        from environment: inout [String: String], overrideKey: String, fallback: URL
+    ) -> URL {
+        defer {
+            environment.removeValue(forKey: overrideKey)
         }
 
-        let dateString = Date.now.ISO8601Format()
-        let fileURL = Self.logsFolder.appending(path: dateString).appendingPathExtension("log")
-        try "".write(to: fileURL, atomically: true, encoding: .utf8)
-        return try FileHandle(forWritingTo: fileURL)
-    }
-}
-
-extension Wine {
-    private enum RegistryKey: String {
-        case currentVersion = #"HKLM\Software\Microsoft\Windows NT\CurrentVersion"#
-        case macDriver = #"HKCU\Software\Wine\Mac Driver"#
-        case desktop = #"HKCU\Control Panel\Desktop"#
-    }
-
-    private static func addRegistryKey(
-        bottle: Bottle, key: String, name: String, data: String, type: RegistryType
-    ) async throws {
-        try await runWine(
-            ["reg", "add", key, "-v", name, "-t", type.rawValue, "-d", data, "-f"],
-            bottle: bottle
-        )
-    }
-
-    private static func queryRegistryKey(
-        bottle: Bottle, key: String, name: String, type: RegistryType
-    ) async throws -> String? {
-        let output = try await runWine(["reg", "query", key, "-v", name], bottle: bottle)
-        let lines = output.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline)
-
-        guard let line = lines.first(where: { $0.contains(type.rawValue) }) else { return nil }
-        let array = line.split(omittingEmptySubsequences: true, whereSeparator: \.isWhitespace)
-        guard let value = array.last else { return nil }
-        return String(value)
-    }
-
-    public static func changeBuildVersion(bottle: Bottle, version: Int) async throws {
-        try await addRegistryKey(bottle: bottle, key: RegistryKey.currentVersion.rawValue,
-                                name: "CurrentBuild", data: "\(version)", type: .string)
-        try await addRegistryKey(bottle: bottle, key: RegistryKey.currentVersion.rawValue,
-                                name: "CurrentBuildNumber", data: "\(version)", type: .string)
-    }
-
-    public static func winVersion(bottle: Bottle) async throws -> WinVersion {
-        let output = try await Wine.runWine(["winecfg", "-v"], bottle: bottle)
-        let lines = output.split(whereSeparator: \.isNewline)
-
-        if let lastLine = lines.last {
-            let winString = String(lastLine)
-
-            if let version = WinVersion(rawValue: winString) {
-                return version
-            }
+        guard let overridePath = environment[overrideKey],
+              !overridePath.isEmpty else {
+            return fallback
         }
 
-        throw WineInterfaceError.invalidResponce
-    }
-
-    public static func buildVersion(bottle: Bottle) async throws -> String? {
-        return try await Wine.queryRegistryKey(
-            bottle: bottle, key: RegistryKey.currentVersion.rawValue,
-            name: "CurrentBuild", type: .string
-        )
-    }
-
-    public static func retinaMode(bottle: Bottle) async throws -> Bool {
-        let values: Set<String> = ["y", "n"]
-        guard let output = try await Wine.queryRegistryKey(
-            bottle: bottle, key: RegistryKey.macDriver.rawValue, name: "RetinaMode", type: .string
-        ), values.contains(output) else {
-            try await changeRetinaMode(bottle: bottle, retinaMode: false)
-            return false
+        let overrideURL = URL(filePath: overridePath)
+        let path = overrideURL.path(percentEncoded: false)
+        guard FileManager.default.isExecutableFile(atPath: path) else {
+            Logger.wineKit.warning("Invalid Wine executable override at \(path, privacy: .public)")
+            return fallback
         }
-        return output == "y"
-    }
 
-    public static func changeRetinaMode(bottle: Bottle, retinaMode: Bool) async throws {
-        try await Wine.addRegistryKey(
-            bottle: bottle, key: RegistryKey.macDriver.rawValue, name: "RetinaMode", data: retinaMode ? "y" : "n",
-            type: .string
-        )
-    }
-
-    public static func dpiResolution(bottle: Bottle) async throws -> Int? {
-        guard let output = try await Wine.queryRegistryKey(bottle: bottle, key: RegistryKey.desktop.rawValue,
-                                                     name: "LogPixels", type: .dword
-        ) else { return nil }
-
-        let noPrefix = output.replacingOccurrences(of: "0x", with: "")
-        let int = Int(noPrefix, radix: 16)
-        guard let int = int else { return nil }
-        return int
-    }
-
-    public static func changeDpiResolution(bottle: Bottle, dpi: Int) async throws {
-        try await Wine.addRegistryKey(
-            bottle: bottle, key: RegistryKey.desktop.rawValue, name: "LogPixels", data: String(dpi),
-            type: .dword
-        )
-    }
-
-    @discardableResult
-    public static func control(bottle: Bottle) async throws -> String {
-        return try await Wine.runWine(["control"], bottle: bottle)
-    }
-
-    @discardableResult
-    public static func regedit(bottle: Bottle) async throws -> String {
-        return try await Wine.runWine(["regedit"], bottle: bottle)
-    }
-
-    @discardableResult
-    public static func cfg(bottle: Bottle) async throws -> String {
-        return try await Wine.runWine(["winecfg"], bottle: bottle)
-    }
-
-    @discardableResult
-    public static func changeWinVersion(bottle: Bottle, win: WinVersion) async throws -> String {
-        return try await Wine.runWine(["winecfg", "-v", win.rawValue], bottle: bottle)
+        return overrideURL
     }
 }
