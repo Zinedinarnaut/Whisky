@@ -25,9 +25,9 @@ extension Program {
     private static let wineserverBinaryOverrideEnvironmentKey = "VECTOR_WINESERVER_BIN_OVERRIDE"
     private static let steamExecutable = "steam.exe"
     private static let steamPackageArchiveURL =
-        "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
-    private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v1"
-    private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v2"
+        "http://web.archive.org/web/20240520if_/media.steampowered.com/client"
+    private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v2"
+    private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v3"
     private static let steamDisableSafeFlagsDefaultsKey = "steamDisableAutoSafeLaunchFlags"
     private static let steamLegacyCompatDefaultsKey = "steamLegacyCompatMode"
     private static let steamUseLegacyBootstrapDefaultsKey = "steamUseLegacyBootstrap"
@@ -189,12 +189,12 @@ extension Program {
     }
 
     private func shouldApplySteamLegacyBootstrap() -> Bool {
-        guard !isUsingSteamCompatibilityRuntime else {
-            return false
-        }
-
         if isSteamLegacyCompatModeEnabled() {
             return true
+        }
+
+        guard !isUsingSteamCompatibilityRuntime else {
+            return false
         }
 
         return UserDefaults.standard.bool(forKey: Self.steamUseLegacyBootstrapDefaultsKey)
