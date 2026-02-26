@@ -27,9 +27,10 @@ extension Program {
     private static let steamPackageArchiveURL =
         "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
     private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v1"
-    private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v1"
-    private static let steamForceSafeLaunchFlagsDefaultsKey = "steamForceSafeLaunchFlags"
-    private static let steamLegacySafeLaunchArguments = [
+    private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v2"
+    private static let steamDisableSafeFlagsDefaultsKey = "steamDisableAutoSafeLaunchFlags"
+    private static let steamSafeLaunchArguments = [
+        "-no-browser",
         "-cef-disable-gpu",
         "-cef-disable-gpu-compositing",
         "-cef-disable-d3d11",
@@ -143,7 +144,7 @@ extension Program {
         resetSteamHTMLCacheIfNeeded()
         appendUnique(
             arguments: &arguments,
-            newArguments: steamLaunchArguments(usingCompatibilityRuntime: usingCompatibilityRuntime)
+            newArguments: steamLaunchArguments()
         )
         if !usingCompatibilityRuntime {
             appendUnique(arguments: &arguments, newArguments: steamBootstrapCompatibilityArguments())
@@ -167,16 +168,12 @@ extension Program {
         VectorWineInstaller.steamCompatibilityWineBinary() != nil
     }
 
-    private func steamLaunchArguments(usingCompatibilityRuntime: Bool) -> [String] {
-        if usingCompatibilityRuntime && !shouldForceSteamSafeLaunchFlags() {
+    private func steamLaunchArguments() -> [String] {
+        if UserDefaults.standard.bool(forKey: Self.steamDisableSafeFlagsDefaultsKey) {
             return []
         }
 
-        return Self.steamLegacySafeLaunchArguments
-    }
-
-    private func shouldForceSteamSafeLaunchFlags() -> Bool {
-        UserDefaults.standard.bool(forKey: Self.steamForceSafeLaunchFlagsDefaultsKey)
+        return Self.steamSafeLaunchArguments
     }
 
     private func steamBootstrapCompatibilityArguments() -> [String] {
