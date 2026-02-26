@@ -1,7 +1,7 @@
 {
   "manifest": {
     "version": "2.5.0",
-    "archiveURL": "https://github.com/Zinedinarnaut/Vector/releases/download/runtime-v2.5.0/Libraries.tar.gz",
+    "archiveURL": "https://data.getwhisky.app/Wine/Libraries.tar.gz",
     "archiveSHA256": "3283b80fb7ec7b105529a9a3fcd2628685e2c7ea6492536f123e758f79c4c077",
     "wineVersion": "7.7.0",
     "dxvkVersion": "1.10.3-20230507-repack",
@@ -9,5 +9,5 @@
     "winetricksVersion": "20250102",
     "wineMonoVersion": "7.4.1"
   },
-  "signature": "QJOS8H/C6HbqMwJ3d5EUUt4zfeHTBsME5LABRHDLwtcBvyzprTM5fSZ/MDxmYxnecqSnFPxWsa4kZUikhaTOBQ=="
+  "signature": "sVFTtTj16fhLkeS2nC5FjmiMJo2PDDG66SWKrQeNr25HRh19PLrd6J72qQ2vR3seDhtI8Ldai68/UHtmbi03Dw=="
 }

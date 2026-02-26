@@ -98,12 +98,12 @@ struct VectorApp: App {
             }
             CommandGroup(replacing: .help) {
                 Button("help.website") {
-                    if let url = URL(string: "https://getvector.app/") {
+                    if let url = URL(string: "https://getwhisky.app/") {
                         openURL(url)
                     }
                 }
                 Button("help.github") {
-                    if let url = URL(string: "https://github.com/Vector-App/Vector") {
+                    if let url = URL(string: "https://github.com/Zinedinarnaut/Whisky") {
                         openURL(url)
                     }
                 }
