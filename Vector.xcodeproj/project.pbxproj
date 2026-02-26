@@ -799,7 +799,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 2.3.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isaacmarovitz.Vector;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -838,7 +838,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 2.3.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isaacmarovitz.Vector;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -866,7 +866,7 @@
 				GENERATE_PKGINFO_FILE = NO;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isaacmarovitz.VectorCmd;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -893,7 +893,7 @@
 				GENERATE_PKGINFO_FILE = NO;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isaacmarovitz.VectorCmd;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -927,6 +927,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 2.3.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isaacmarovitz.Vector.VectorThumbnail;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -963,6 +964,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 2.3.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isaacmarovitz.Vector.VectorThumbnail;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1093,6 +1095,7 @@
 		};
 		8C2AEFC72AED79B700CB568F /* VectorKit */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 8C2AEFC62AED79B700CB568F /* XCLocalSwiftPackageReference "VectorKit" */;
 			productName = VectorKit;
 		};
 		8C2AEFC92AED79CD00CB568F /* VectorKit */ = {
@@ -1102,6 +1105,7 @@
 		};
 		8CB681E62AED7CD00018D319 /* VectorKit */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 8C2AEFC62AED79B700CB568F /* XCLocalSwiftPackageReference "VectorKit" */;
 			productName = VectorKit;
 		};
 		EB58FB542A499896002DC184 /* SemanticVersion */ = {
