@@ -21,6 +21,15 @@ import AppKit
 import os.log
 
 extension Program {
+    private static let steamExecutable = "steam.exe"
+    private static let steamSafeLaunchArguments = [
+        "-no-browser",
+        "-cef-disable-gpu",
+        "-cef-disable-gpu-compositing",
+        "-cef-disable-d3d11",
+        "-no-cef-sandbox"
+    ]
+
     public func run() {
         if NSEvent.modifierFlags.contains(.shift) {
             self.runInTerminal()
@@ -30,8 +39,8 @@ extension Program {
     }
 
     func runInWine() {
-        let arguments = settings.arguments.split { $0.isWhitespace }.map(String.init)
-        let environment = generateEnvironment()
+        let arguments = runtimeArguments()
+        let environment = runtimeEnvironment()
 
         Task.detached(priority: .userInitiated) {
             do {
@@ -47,8 +56,9 @@ extension Program {
     }
 
     public func generateTerminalCommand() -> String {
+        let arguments = runtimeArguments().joined(separator: " ")
         return Wine.generateRunCommand(
-            at: self.url, bottle: bottle, args: settings.arguments, environment: generateEnvironment()
+            at: self.url, bottle: bottle, args: arguments, environment: runtimeEnvironment()
         )
     }
 
@@ -84,5 +94,28 @@ extension Program {
         alert.alertStyle = .critical
         alert.addButton(withTitle: String(localized: "button.ok"))
         alert.runModal()
+    }
+
+    private func runtimeEnvironment() -> [String: String] {
+        generateEnvironment()
+    }
+
+    private func runtimeArguments() -> [String] {
+        var arguments = settings.arguments.split { $0.isWhitespace }.map(String.init)
+
+        guard isSteamProgram else {
+            return arguments
+        }
+
+        for argument in Self.steamSafeLaunchArguments
+        where !arguments.contains(where: { $0.caseInsensitiveCompare(argument) == .orderedSame }) {
+            arguments.append(argument)
+        }
+
+        return arguments
+    }
+
+    private var isSteamProgram: Bool {
+        url.lastPathComponent.caseInsensitiveCompare(Self.steamExecutable) == .orderedSame
     }
 }
