@@ -289,10 +289,9 @@ public struct BottleSettings: Codable, Equatable {
             case .off:
                 break
             }
-        }
-
-        if dxvkAsync {
-            wineEnv.updateValue("1", forKey: "DXVK_ASYNC")
+            if dxvkAsync {
+                wineEnv.updateValue("1", forKey: "DXVK_ASYNC")
+            }
         }
 
         switch enhancedSync {

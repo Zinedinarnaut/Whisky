@@ -22,6 +22,9 @@ import os.log
 public class Wine {
     private static let wineBinaryOverrideEnvironmentKey = "WHISKY_WINE_BIN_OVERRIDE"
     private static let wineserverBinaryOverrideEnvironmentKey = "WHISKY_WINESERVER_BIN_OVERRIDE"
+    private static let wineDebugLevelDefaultsKey = "wineDebugLevel"
+    private static let fallbackWineDebugLevel = "-all"
+    private static let dxvkStateCacheFolderName = "DXVKStateCache"
 
     /// URL to the installed `DXVK` folder
     private static let dxvkFolder: URL = WhiskyWineInstaller.libraryFolder.appending(path: "DXVK")
@@ -264,10 +267,10 @@ public class Wine {
     ) -> [String: String] {
         var result: [String: String] = [
             "WINEPREFIX": bottle.url.path,
-            "WINEDEBUG": "fixme-all",
-            "GST_DEBUG": "1"
+            "WINEDEBUG": resolvedWineDebugLevel()
         ]
         bottle.settings.environmentVariables(wineEnv: &result)
+        applyPerformanceDefaults(for: bottle, environment: &result)
         guard !environment.isEmpty else { return result }
         result.merge(environment, uniquingKeysWith: { $1 })
         return result
@@ -279,8 +282,7 @@ public class Wine {
     ) -> [String: String] {
         var result: [String: String] = [
             "WINEPREFIX": bottle.url.path,
-            "WINEDEBUG": "fixme-all",
-            "GST_DEBUG": "1"
+            "WINEDEBUG": resolvedWineDebugLevel()
         ]
         guard !environment.isEmpty else { return result }
         result.merge(environment, uniquingKeysWith: { $1 })
@@ -307,5 +309,40 @@ public class Wine {
         }
 
         return overrideURL
+    }
+}
+
+private extension Wine {
+    static func resolvedWineDebugLevel() -> String {
+        guard let configuredLevel = UserDefaults.standard.string(forKey: wineDebugLevelDefaultsKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !configuredLevel.isEmpty else {
+            return fallbackWineDebugLevel
+        }
+
+        return configuredLevel
+    }
+
+    static func applyPerformanceDefaults(for bottle: Bottle, environment: inout [String: String]) {
+        guard bottle.settings.dxvk else {
+            return
+        }
+
+        environment["DXVK_LOG_LEVEL"] = "none"
+        environment["DXVK_STATE_CACHE"] = "1"
+
+        let cacheDirectory = bottle.url.appending(path: dxvkStateCacheFolderName)
+        do {
+            try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            environment["DXVK_STATE_CACHE_PATH"] = cacheDirectory.path(percentEncoded: false)
+        } catch {
+            let cachePath = cacheDirectory.path(percentEncoded: false)
+            Logger.wineKit.warning(
+                "Failed to create DXVK state cache directory at \(cachePath, privacy: .public)"
+            )
+            Logger.wineKit.warning(
+                "DXVK state cache setup error: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 }

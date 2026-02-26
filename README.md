@@ -7,9 +7,10 @@
   [![](https://img.shields.io/discord/1115955071549702235?style=for-the-badge)](https://discord.gg/CsqAfs9CnM)
 </div>
 
-## Maintenance Notice
+## Maintenance Status
 
-[Whisky is no longer actively maintained](https://docs.getwhisky.app/maintenance-notice). Apps and games may break at any time.
+Whisky is actively maintained again in this fork for Apple Silicon gaming.
+Runtime, Steam compatibility, and toolchain updates are tracked here.
 
 <img width="650" alt="Config" src="https://github.com/Whisky-App/Whisky/assets/42140194/d0a405e8-76ee-48f0-92b5-165d184a576b">
 
@@ -60,6 +61,26 @@ If a machine needs conservative startup flags, enable safe mode:
 
 ```bash
 defaults write com.isaacmarovitz.Whisky steamForceSafeLaunchFlags -bool true
+```
+
+### Performance Defaults (Fork)
+
+This fork applies game-focused Wine defaults:
+
+- `WINEDEBUG=-all` for lower logging overhead during game launches.
+- DXVK state cache is enabled with a per-bottle cache path.
+- DXVK logging defaults to `none` when DXVK is enabled.
+
+To temporarily restore verbose Wine logs for troubleshooting:
+
+```bash
+defaults write com.isaacmarovitz.Whisky wineDebugLevel fixme-all
+```
+
+To revert to the optimized default:
+
+```bash
+defaults delete com.isaacmarovitz.Whisky wineDebugLevel
 ```
 
 ## Homebrew
