@@ -53,11 +53,10 @@
 		6EFDF6512AAE2DA800EF622F /* ThumbnailProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EFDF6502AAE2DA800EF622F /* ThumbnailProvider.swift */; };
 		6EFDF6562AAE2DA800EF622F /* VectorThumbnail.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6EFDF64A2AAE2DA800EF622F /* VectorThumbnail.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6EFDF6662AAE303300EF622F /* Icons.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6EFDF6652AAE303300EF622F /* Icons.xcassets */; };
-		8C2AEFC82AED79B700CB568F /* VectorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8C2AEFC72AED79B700CB568F /* VectorKit */; };
+		8C2AEFC82AED79B700CB568F /* VectorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8C2AEFC92AED79CD00CB568F /* VectorKit */; };
 		8C2AEFCA2AED79CD00CB568F /* VectorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8C2AEFC92AED79CD00CB568F /* VectorKit */; };
 		8C73E1342AF472FC00B6FB45 /* ProgramMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C73E1332AF472FC00B6FB45 /* ProgramMenuView.swift */; };
-		8CB681E52AED7C6F0018D319 /* VectorKit in Resources */ = {isa = PBXBuildFile; fileRef = 8CB681E42AED7C6F0018D319 /* VectorKit */; };
-		8CB681E72AED7CD00018D319 /* VectorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8CB681E62AED7CD00018D319 /* VectorKit */; };
+		8CB681E72AED7CD00018D319 /* VectorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8C2AEFC92AED79CD00CB568F /* VectorKit */; };
 		AB0BCABD2B61036E00E21C31 /* RunningProcessesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0BCABC2B61036E00E21C31 /* RunningProcessesView.swift */; };
 		DB696FC82AFAE5DA0037EB2F /* PinCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB696FC72AFAE5DA0037EB2F /* PinCreationView.swift */; };
 		EB58FB552A499896002DC184 /* SemanticVersion in Frameworks */ = {isa = PBXBuildFile; productRef = EB58FB542A499896002DC184 /* SemanticVersion */; };
@@ -157,7 +156,6 @@
 		6EFDF6532AAE2DA800EF622F /* VectorThumbnail.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VectorThumbnail.entitlements; sourceTree = "<group>"; };
 		6EFDF6652AAE303300EF622F /* Icons.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Icons.xcassets; sourceTree = "<group>"; };
 		8C73E1332AF472FC00B6FB45 /* ProgramMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramMenuView.swift; sourceTree = "<group>"; };
-		8CB681E42AED7C6F0018D319 /* VectorKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = VectorKit; sourceTree = "<group>"; };
 		AB0BCABC2B61036E00E21C31 /* RunningProcessesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunningProcessesView.swift; sourceTree = "<group>"; };
 		DB696FC72AFAE5DA0037EB2F /* PinCreationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinCreationView.swift; sourceTree = "<group>"; };
 		EEA5A2452A31DD65008274AE /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -267,7 +265,6 @@
 				6E40495429CCA19C006E3F1B /* Vector */,
 				6E70A4992A9A2197007799E9 /* VectorCmd */,
 				6EFDF64F2AAE2DA800EF622F /* VectorThumbnail */,
-				8CB681E42AED7C6F0018D319 /* VectorKit */,
 				6E2FB15F2B589A9000E344C6 /* Libraries */,
 				6E40495329CCA19C006E3F1B /* Products */,
 				6E5967692A9A424900D64F70 /* Frameworks */,
@@ -417,7 +414,7 @@
 			packageProductDependencies = (
 				6E064B1129DD32A200D9A2D2 /* Sparkle */,
 				EB58FB542A499896002DC184 /* SemanticVersion */,
-				8C2AEFC72AED79B700CB568F /* VectorKit */,
+				8C2AEFC92AED79CD00CB568F /* VectorKit */,
 			);
 			productName = Vector;
 			productReference = 6E40495229CCA19C006E3F1B /* Vector.app */;
@@ -461,7 +458,7 @@
 			);
 			name = VectorThumbnail;
 			packageProductDependencies = (
-				8CB681E62AED7CD00018D319 /* VectorKit */,
+				8C2AEFC92AED79CD00CB568F /* VectorKit */,
 			);
 			productName = VectorThumbnail;
 			productReference = 6EFDF64A2AAE2DA800EF622F /* VectorThumbnail.appex */;
@@ -542,7 +539,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8CB681E52AED7C6F0018D319 /* VectorKit in Resources */,
 				6E40495D29CCA19C006E3F1B /* Preview Assets.xcassets in Resources */,
 				6EB58AC92AEACE5E00B1ED3F /* Localizable.xcstrings in Resources */,
 				6E40495A29CCA19C006E3F1B /* Assets.xcassets in Resources */,
@@ -1093,17 +1089,7 @@
 			package = 6E95F6712AB3F67200D585D1 /* XCRemoteSwiftPackageReference "Progress" */;
 			productName = Progress;
 		};
-		8C2AEFC72AED79B700CB568F /* VectorKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8C2AEFC62AED79B700CB568F /* XCLocalSwiftPackageReference "VectorKit" */;
-			productName = VectorKit;
-		};
 		8C2AEFC92AED79CD00CB568F /* VectorKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8C2AEFC62AED79B700CB568F /* XCLocalSwiftPackageReference "VectorKit" */;
-			productName = VectorKit;
-		};
-		8CB681E62AED7CD00018D319 /* VectorKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 8C2AEFC62AED79B700CB568F /* XCLocalSwiftPackageReference "VectorKit" */;
 			productName = VectorKit;
