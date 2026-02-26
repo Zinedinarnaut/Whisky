@@ -93,6 +93,7 @@ public struct BottleWineConfig: Codable, Equatable {
     static var defaultWineVersion: SemanticVersion {
         VectorWineInstaller.defaultWineVersion()
     }
+    private static let unsetWineVersion = SemanticVersion(0, 0, 0)
     var wineVersion: SemanticVersion = Self.defaultWineVersion
     var windowsVersion: WinVersion = .win10
     var enhancedSync: EnhancedSync = .msync
@@ -104,6 +105,9 @@ public struct BottleWineConfig: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.wineVersion = try container.decodeIfPresent(SemanticVersion.self, forKey: .wineVersion) ?? Self.defaultWineVersion
+        if self.wineVersion == Self.unsetWineVersion {
+            self.wineVersion = Self.defaultWineVersion
+        }
         self.windowsVersion = try container.decodeIfPresent(WinVersion.self, forKey: .windowsVersion) ?? .win10
         self.enhancedSync = try container.decodeIfPresent(EnhancedSync.self, forKey: .enhancedSync) ?? .msync
         self.avxEnabled = try container.decodeIfPresent(Bool.self, forKey: .avxEnabled) ?? false

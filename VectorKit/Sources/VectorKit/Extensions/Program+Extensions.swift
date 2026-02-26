@@ -29,8 +29,9 @@ extension Program {
     private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v1"
     private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v2"
     private static let steamDisableSafeFlagsDefaultsKey = "steamDisableAutoSafeLaunchFlags"
+    private static let steamUseLegacyBootstrapDefaultsKey = "steamUseLegacyBootstrap"
+    private static let steamForceNoBrowserDefaultsKey = "steamForceNoBrowser"
     private static let steamSafeLaunchArguments = [
-        "-no-browser",
         "-cef-disable-gpu",
         "-cef-disable-gpu-compositing",
         "-cef-disable-d3d11",
@@ -140,13 +141,12 @@ extension Program {
             return arguments
         }
 
-        let usingCompatibilityRuntime = isUsingSteamCompatibilityRuntime
         resetSteamHTMLCacheIfNeeded()
         appendUnique(
             arguments: &arguments,
             newArguments: steamLaunchArguments()
         )
-        if !usingCompatibilityRuntime {
+        if shouldApplySteamLegacyBootstrap() {
             appendUnique(arguments: &arguments, newArguments: steamBootstrapCompatibilityArguments())
         }
 
@@ -173,7 +173,19 @@ extension Program {
             return []
         }
 
-        return Self.steamSafeLaunchArguments
+        var arguments = Self.steamSafeLaunchArguments
+        if UserDefaults.standard.bool(forKey: Self.steamForceNoBrowserDefaultsKey) {
+            arguments.append("-no-browser")
+        }
+        return arguments
+    }
+
+    private func shouldApplySteamLegacyBootstrap() -> Bool {
+        guard !isUsingSteamCompatibilityRuntime else {
+            return false
+        }
+
+        return UserDefaults.standard.bool(forKey: Self.steamUseLegacyBootstrapDefaultsKey)
     }
 
     private func steamBootstrapCompatibilityArguments() -> [String] {
