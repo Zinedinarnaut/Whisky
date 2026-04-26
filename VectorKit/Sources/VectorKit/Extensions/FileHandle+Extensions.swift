@@ -80,6 +80,16 @@ extension FileHandle {
         header += "Windows Version: \(bottle.settings.windowsVersion)\n"
         header += "Enhanced Sync: \(bottle.settings.enhancedSync)\n\n"
 
+        header += "Runtime Selection: \(bottle.settings.runtimeSelection.rawValue)\n"
+        header += "Graphics Backend: \(bottle.settings.graphicsBackendMode.rawValue)\n"
+        header += "DLL Overrides Policy: \(bottle.settings.dllOverridesPolicy.rawValue)\n"
+        header += "Force D3D11: \(bottle.settings.forceD3D11Compatibility)\n"
+        header += "Runtime DLL Sync Mode: \(bottle.settings.runtimeDLLSyncMode.rawValue)\n"
+        header += "Installer Compatibility Mode: \(bottle.settings.installerCompatibilityMode)\n"
+        header += "Trainer Mode: \(bottle.settings.trainerSupportMode)\n"
+        header += "Log Profile: \(bottle.settings.logProfile.rawValue)\n"
+        header += "Anti-cheat Preflight: \(bottle.settings.antiCheatPreflightMode.rawValue)\n\n"
+
         header += "Metal HUD: \(bottle.settings.metalHud)\n"
         header += "Metal Trace: \(bottle.settings.metalTrace)\n\n"
 
@@ -88,6 +98,12 @@ extension FileHandle {
             header += "DXVK Async: \(bottle.settings.dxvkAsync)\n"
             header += "DXVK HUD: \(bottle.settings.dxvkHud)\n\n"
         }
+
+        header += "Shader Cache Enabled: \(bottle.settings.shaderCacheEnabled)\n"
+        header += "Frame Limit: \(bottle.settings.frameRateLimit)\n"
+        header += "VSync: \(bottle.settings.vsyncEnabled)\n"
+        header += "FSR Enabled: \(bottle.settings.fsrEnabled)\n"
+        header += "Game Profiles: \(bottle.settings.gameProfiles.count)\n\n"
 
         write(line: header)
     }

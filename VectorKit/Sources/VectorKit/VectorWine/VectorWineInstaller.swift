@@ -57,6 +57,13 @@ public class VectorWineInstaller {
     /// URL to the installed `wine` `bin` directory
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
 
+    private static let preferredRuntimeBaseURL: URL = {
+        guard let url = URL(string: "https://raw.githubusercontent.com/Zinedinarnaut/Vector/main/runtime/Wine") else {
+            fatalError("Invalid URL string for preferredRuntimeBaseURL")
+        }
+        return url
+    }()
+
     private static let defaultRuntimeBaseURL: URL = {
         guard let url = URL(string: "https://raw.githubusercontent.com/Zinedinarnaut/Whisky/main/runtime/Wine") else {
             fatalError("Invalid URL string for defaultRuntimeBaseURL")
@@ -353,6 +360,7 @@ private extension VectorWineInstaller {
             urls.append(overrideURL)
         }
 
+        urls.append(preferredRuntimeBaseURL)
         urls.append(defaultRuntimeBaseURL)
         urls.append(legacyRuntimeBaseURL)
 
