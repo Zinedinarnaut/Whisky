@@ -24,6 +24,24 @@ public enum VectorDoctorCheckStatus: String, Codable, Sendable {
     case failed
 }
 
+public enum VectorDoctorFixID: String, Codable, CaseIterable, Sendable, Identifiable {
+    case repairRuntime
+    case killMismatchedWineserver
+    case reapplyVecPatch
+    case repairMediaPlayback
+    case repairLauncherDependencies
+    case exportDiagnosticBundle
+
+    public var id: String { rawValue }
+}
+
+public struct VectorDoctorFixSuggestion: Codable, Identifiable, Sendable {
+    public var id: VectorDoctorFixID
+    public var title: String
+    public var detail: String
+    public var actionTitle: String
+}
+
 public struct VectorDoctorCheck: Codable, Identifiable, Sendable {
     public var id: String
     public var title: String
@@ -110,4 +128,5 @@ public struct VectorDoctorReport: Codable, Sendable {
     public var protectedLaunchAssessment: ProtectedLaunchAssessment?
     public var recentLogs: [VectorDoctorLogSnippet]
     public var checks: [VectorDoctorCheck]
+    public var recommendedFixes: [VectorDoctorFixSuggestion]
 }

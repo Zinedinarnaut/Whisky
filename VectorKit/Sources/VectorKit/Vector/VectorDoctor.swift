@@ -30,13 +30,24 @@ public enum VectorDoctor {
         )
         let bridge = bridgeSnapshot(for: bottle, host: host, protectedAssessment: protectedAssessment)
         let logs = recentLogSnippets(for: bottle, maxCount: 3)
-        let checks = checksForReport(
-            host: host,
+        let repairSignals = repairSignals(
+            for: bottle,
             runtime: runtime,
-            bridge: bridge,
             dispatch: dispatch,
-            protectedAssessment: protectedAssessment
+            logs: logs
         )
+        let checks = checksForReport(
+            CheckContext(
+                bottle: bottle,
+                host: host,
+                runtime: runtime,
+                bridge: bridge,
+                dispatch: dispatch,
+                repairSignals: repairSignals,
+                protectedAssessment: protectedAssessment
+            )
+        )
+        let recommendedFixes = recommendedFixes(from: repairSignals, protectedAssessment: protectedAssessment)
 
         return VectorDoctorReport(
             schemaVersion: 1,
@@ -49,7 +60,8 @@ public enum VectorDoctor {
             dispatch: dispatch,
             protectedLaunchAssessment: protectedAssessment,
             recentLogs: logs,
-            checks: checks
+            checks: checks,
+            recommendedFixes: recommendedFixes
         )
     }
 
@@ -219,99 +231,6 @@ private extension VectorDoctor {
 }
 
 private extension VectorDoctor {
-    static func checksForReport(
-        host: VectorHostSecurityCapabilityReport,
-        runtime: VectorDoctorRuntimeSnapshot,
-        bridge: VectorDoctorBridgeSnapshot,
-        dispatch: VectorDoctorDispatchSnapshot,
-        protectedAssessment: ProtectedLaunchAssessment?
-    ) -> [VectorDoctorCheck] {
-        [
-            hostCheck(host),
-            runtimeCheck(runtime),
-            bridgeCheck(bridge),
-            dispatchCheck(dispatch),
-            protectedCheck(protectedAssessment)
-        ]
-    }
-
-    static func hostCheck(_ host: VectorHostSecurityCapabilityReport) -> VectorDoctorCheck {
-        let status: VectorDoctorCheckStatus = host.securityMode == .unknown ? .warning : .pass
-        return check(
-            id: "host",
-            title: "Host security",
-            status: status,
-            detail: host.compactSummary,
-            metadata: ["metal": host.metalDeviceName, "rosetta": String(host.rosettaInstalled)]
-        )
-    }
-
-    static func runtimeCheck(_ runtime: VectorDoctorRuntimeSnapshot) -> VectorDoctorCheck {
-        let runtimeReady = runtime.bundledWinePresent && runtime.bundledWineserverPresent
-        return check(
-            id: "runtime",
-            title: "Wine runtime",
-            status: runtimeReady ? .pass : .failed,
-            detail: runtimeReady ? "Bundled runtime pair is present." : "Bundled wine/wineserver pair is incomplete.",
-            metadata: ["wineVersion": runtime.installedWineVersion]
-        )
-    }
-
-    static func bridgeCheck(_ bridge: VectorDoctorBridgeSnapshot) -> VectorDoctorCheck {
-        let status: VectorDoctorCheckStatus
-        if bridge.protectedToolingBlocked {
-            status = .blocked
-        } else if bridge.bridgeAvailable {
-            status = .pass
-        } else if bridge.advancedDiagnosticsUnlocked {
-            status = .warning
-        } else {
-            status = .info
-        }
-        return check(id: "memory_bridge", title: "Memory bridge", status: status, detail: bridge.message)
-    }
-
-    static func dispatchCheck(_ dispatch: VectorDoctorDispatchSnapshot) -> VectorDoctorCheck {
-        let status: VectorDoctorCheckStatus
-        if !dispatch.enabled {
-            status = .info
-        } else if dispatch.updateAvailable {
-            status = .warning
-        } else {
-            status = .pass
-        }
-        return check(id: "vecpatch", title: "VecPatch", status: status, detail: dispatch.message)
-    }
-
-    static func protectedCheck(_ assessment: ProtectedLaunchAssessment?) -> VectorDoctorCheck {
-        guard let assessment else {
-            return check(
-                id: "protected_scan",
-                title: "Protected title scan",
-                status: .pass,
-                detail: "No protected anti-cheat markers detected."
-            )
-        }
-        return check(
-            id: "protected_scan",
-            title: "Protected title scan",
-            status: assessment.shouldBlockLocalLaunch ? .blocked : .warning,
-            detail: assessment.reasons.joined(separator: " ")
-        )
-    }
-}
-
-private extension VectorDoctor {
-    static func check(
-        id: String,
-        title: String,
-        status: VectorDoctorCheckStatus,
-        detail: String,
-        metadata: [String: String] = [:]
-    ) -> VectorDoctorCheck {
-        VectorDoctorCheck(id: id, title: title, status: status, detail: detail, metadata: metadata)
-    }
-
     static func runtimeInstallHealth() -> [String: String] {
         let url = VectorWineInstaller.libraryFolder.appending(path: "VectorRuntimeInstallHealth.json")
         guard let data = try? Data(contentsOf: url),

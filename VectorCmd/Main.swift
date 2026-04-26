@@ -608,9 +608,24 @@ struct VectorSecurity: AsyncParsableCommand {
         @Argument var bottleName: String
         @Flag(name: .long, help: "Skip remote VecPatch refresh and use local/cache state only.")
         var offline = false
+        @Option(name: .long, help: "Write a zipped Vector Doctor bundle to this path instead of printing JSON.")
+        var bundleOutput: String?
 
         mutating func run() async throws {
             let bottle = try VectorMemory.loadBottle(named: bottleName)
+            if let bundleOutput {
+                let destinationURL = URL(filePath: bundleOutput)
+                let result = try await VectorDoctor.writeDiagnosticBundle(
+                    for: bottle,
+                    to: destinationURL,
+                    checkRemote: !offline
+                )
+                print("Wrote \(result.url.path(percentEncoded: false))")
+                print("Doctor digest: \(result.manifest.doctorReportDigest)")
+                print("VecPatch digest: \(result.manifest.vecPatchDigest)")
+                return
+            }
+
             let data = try await VectorDoctor.encodedReport(for: bottle, checkRemote: !offline)
             guard let output = String(data: data, encoding: .utf8) else {
                 throw ValidationError("Failed to encode Vector Doctor export.")

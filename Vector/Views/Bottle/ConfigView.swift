@@ -52,6 +52,7 @@ struct ConfigView: View {
     @State private var vectorDoctorLoading: Bool = false
     @State private var vectorDoctorReport: VectorDoctorReport?
     @State private var vectorDoctorStatusMessage: String = ""
+    @State private var vectorDoctorFixInFlight: VectorDoctorFixID?
     @State private var missingDependencyFixes: [MissingDependencyFix] = []
     @State private var environmentRepairInFlight: Bool = false
     @State private var dlssHealthModalPresented: Bool = false
@@ -552,6 +553,28 @@ struct ConfigView: View {
                         vectorDoctorCheckRow(check)
                     }
 
+                    if !report.recommendedFixes.isEmpty {
+                        Divider()
+                        Text("Doctor actions")
+                            .font(.subheadline)
+                        ForEach(report.recommendedFixes) { fix in
+                            Button {
+                                applyVectorDoctorFix(fix.id)
+                            } label: {
+                                HStack {
+                                    Text(fix.actionTitle)
+                                    Spacer()
+                                    if vectorDoctorFixInFlight == fix.id {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    }
+                                }
+                            }
+                            .disabled(snapshotInFlight || vectorDoctorLoading || vectorDoctorFixInFlight != nil)
+                            .help(fix.detail)
+                        }
+                    }
+
                     Divider()
                     HStack {
                         Text("VecPatch")
@@ -1003,36 +1026,35 @@ struct ConfigView: View {
 
     private func exportVectorDoctorReport() {
         vectorDoctorLoading = true
-        vectorDoctorStatusMessage = "Preparing diagnostic export..."
+        vectorDoctorStatusMessage = "Preparing diagnostic bundle..."
 
         Task(priority: .userInitiated) {
-            do {
-                let data = try await VectorDoctor.encodedReport(for: bottle, checkRemote: true)
-                if let report = try? JSONDecoder().decode(VectorDoctorReport.self, from: data) {
-                    vectorDoctorReport = report
-                }
-                vectorDoctorLoading = false
-                presentVectorDoctorSavePanel(data: data)
-            } catch {
-                vectorDoctorLoading = false
-                vectorDoctorStatusMessage = "Failed to export diagnostics: \(error.localizedDescription)"
-            }
+            let report = await VectorDoctor.report(for: bottle, checkRemote: true)
+            vectorDoctorReport = report
+            vectorDoctorLoading = false
+            presentVectorDoctorSavePanel()
         }
     }
 
-    private func presentVectorDoctorSavePanel(data: Data) {
+    private func presentVectorDoctorSavePanel() {
         let panel = NSSavePanel()
-        panel.title = "Export Vector Doctor Diagnostics"
-        panel.nameFieldStringValue = "\(bottle.settings.name)-vector-doctor.json"
-        panel.allowedContentTypes = [.json]
+        panel.title = "Export Vector Doctor Diagnostic Bundle"
+        panel.nameFieldStringValue = "\(bottle.settings.name)-vector-doctor.zip"
+        panel.allowedContentTypes = [.zip]
         panel.canCreateDirectories = true
         panel.begin { result in
             guard result == .OK, let url = panel.url else { return }
-            do {
-                try data.write(to: url, options: .atomic)
-                vectorDoctorStatusMessage = "Exported Vector Doctor diagnostics."
-            } catch {
-                vectorDoctorStatusMessage = "Failed to save diagnostics: \(error.localizedDescription)"
+            vectorDoctorLoading = true
+            vectorDoctorStatusMessage = "Writing diagnostic bundle..."
+            Task(priority: .userInitiated) {
+                do {
+                    let result = try await VectorDoctor.writeDiagnosticBundle(for: bottle, to: url, checkRemote: false)
+                    vectorDoctorLoading = false
+                    vectorDoctorStatusMessage = "Exported \(result.url.lastPathComponent)."
+                } catch {
+                    vectorDoctorLoading = false
+                    vectorDoctorStatusMessage = "Failed to save diagnostics: \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -1047,6 +1069,61 @@ struct ConfigView: View {
             return "Vector Doctor found \(warningCount) warning(s)."
         }
         return "Vector Doctor found no major blockers."
+    }
+
+    private func applyVectorDoctorFix(_ fixID: VectorDoctorFixID) {
+        vectorDoctorFixInFlight = fixID
+        defer {
+            if fixID == .exportDiagnosticBundle || fixID == .reapplyVecPatch {
+                vectorDoctorFixInFlight = nil
+            }
+        }
+
+        switch fixID {
+        case .repairRuntime:
+            let plan = DependencyRepairPlan(fixIDs: [.runtimeDLLMirror], includeRuntimeDLLRepair: true)
+            performDependencyRepair(plan, action: "Vector Doctor runtime repair", trackEnvironmentRepair: false)
+            vectorDoctorFixInFlight = nil
+        case .killMismatchedWineserver:
+            killMismatchedWineserverFromDoctor()
+        case .reapplyVecPatch:
+            runDispatchSync(forceRefresh: true)
+        case .repairMediaPlayback:
+            let plan = DependencyRepairPlan(fixIDs: [.mediaPlayback], includeRuntimeDLLRepair: true)
+            performDependencyRepair(plan, action: "Vector Doctor media playback repair", trackEnvironmentRepair: false)
+            vectorDoctorFixInFlight = nil
+        case .repairLauncherDependencies:
+            let plan = DependencyRepairPlan(
+                fixIDs: [.dotNet, .visualCpp, .edgeWebView2Auth],
+                includeRuntimeDLLRepair: false
+            )
+            performDependencyRepair(plan, action: "Vector Doctor launcher dependency repair", trackEnvironmentRepair: false)
+            vectorDoctorFixInFlight = nil
+        case .exportDiagnosticBundle:
+            exportVectorDoctorReport()
+        }
+    }
+
+    private func killMismatchedWineserverFromDoctor() {
+        let targetBottle = bottle
+        snapshotInFlight = true
+        Task.detached(priority: .userInitiated) {
+            do {
+                try Wine.killBottle(bottle: targetBottle)
+                await MainActor.run {
+                    snapshotMessage = "Vector Doctor killed stale wineserver processes."
+                    vectorDoctorFixInFlight = nil
+                    snapshotInFlight = false
+                    runVectorDoctor()
+                }
+            } catch {
+                await MainActor.run {
+                    snapshotMessage = "Vector Doctor wineserver reset failed: \(error.localizedDescription)"
+                    vectorDoctorFixInFlight = nil
+                    snapshotInFlight = false
+                }
+            }
+        }
     }
 
     private func applyLaunchDoctorFix(_ fix: LaunchDoctorFixID) {
