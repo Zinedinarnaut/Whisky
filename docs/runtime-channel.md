@@ -83,6 +83,25 @@ scripts/runtime/apply_vector_runtime_patchsets.sh \
   --wine-source /path/to/wine/source
 ```
 
+On Apple Silicon, Wine runtime builds need a PE cross-compilation toolchain.
+Homebrew `llvm` provides `clang`, `lld`, and `llvm-dlltool`, but Wine also
+needs the MinGW/PE runtime libraries. If configure fails with:
+
+```text
+PE cross-compilation is required for ARM64
+```
+
+install or provide an `llvm-mingw` toolchain and put its `bin` directory ahead
+of `/usr/bin` before configuring Wine. Also put Homebrew bison ahead of
+Apple's legacy `/usr/bin/bison`:
+
+```bash
+export PATH="/path/to/llvm-mingw/bin:/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/bison/bin:$PATH"
+```
+
+The runtime archive should only be published after `Wine/bin/vectorvmctl` is
+present and `scripts/runtime/validate_runtime_archive.sh` passes.
+
 ## Proton-style compatibility catalogs
 
 Patchsets whose directory name does not start with `vector-*` are treated as
