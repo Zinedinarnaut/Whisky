@@ -9,8 +9,8 @@
     "patches": [
       {
         "file": "0001-vectorvmctl-nt-memory-bridge.patch",
-        "sha256": "8cb0347f24f25e0c098835202f088524168c2735ce781fd6c308f613d298c896",
-        "lineCount": 589,
+        "sha256": "077b459d379f9d988e1f092edad4bfc45df8fb5d4adbafba1db6ab3f2b150276",
+        "lineCount": 593,
         "scope": "programs"
       }
     ]

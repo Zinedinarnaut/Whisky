@@ -23,8 +23,8 @@ NT bridge transport.
 ---
  configure.ac                         |   1 +
  programs/vectorvmctl/Makefile.in     |  10 +
- programs/vectorvmctl/main.c          | 433 ++++++++++++++++++++++++++++++++++
- 3 files changed, 444 insertions(+)
+ programs/vectorvmctl/main.c          | 525 ++++++++++++++++++++++++++++++++++
+ 3 files changed, 536 insertions(+)
  create mode 100644 programs/vectorvmctl/Makefile.in
  create mode 100644 programs/vectorvmctl/main.c
 
@@ -63,7 +63,7 @@ new file mode 100644
 index 000000000000..333333333333
 --- /dev/null
 +++ b/programs/vectorvmctl/main.c
-@@ -0,0 +1,433 @@
+@@ -0,0 +1,525 @@
 +/*
 + * vectorvmctl - NT memory bridge helper for Vector
 + *
@@ -80,6 +80,10 @@ index 000000000000..333333333333
 +#include <windows.h>
 +#include <tlhelp32.h>
 +#include <winternl.h>
++
++#ifndef TH32CS_SNAPMODULE32
++#define TH32CS_SNAPMODULE32 0
++#endif
 +
 +#define CAPABILITY_SCHEMA_VERSION 1
 +

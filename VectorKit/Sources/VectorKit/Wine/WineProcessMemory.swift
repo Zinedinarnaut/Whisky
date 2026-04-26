@@ -142,10 +142,21 @@ public enum WineProcessMemoryError: LocalizedError {
 
 // swiftlint:disable:next type_body_length
 public final class WineProcessMemoryService {
+    private enum BridgeExecutionMode {
+        case nativeHost
+        case winePE
+    }
+
     private struct RuntimeBinaries {
         let wine: URL
         let winedbg: URL
         let bridgeTool: URL?
+        let bridgeExecutionMode: BridgeExecutionMode?
+    }
+
+    private struct BridgeCandidate {
+        let url: URL
+        let executionMode: BridgeExecutionMode
     }
 
     private struct HandleContext {
@@ -632,18 +643,14 @@ private extension WineProcessMemoryService {
 
         let runtime = try runtimeBinaries()
         guard let bridgeTool = runtime.bridgeTool else { return cacheBridgeAvailability(false) }
-        let bridgePath = bridgeTool.path(percentEncoded: false)
-        guard FileManager.default.isExecutableFile(atPath: bridgePath) else { return cacheBridgeAvailability(false) }
+        guard let bridgeMode = runtime.bridgeExecutionMode,
+              isBridgeToolRunnable(bridgeTool, mode: bridgeMode) else {
+            return cacheBridgeAvailability(false)
+        }
 
-        let environment = commandEnvironment(for: runtime)
         let supportsBridge: Bool
         do {
-            let probe = try runProcess(
-                executableURL: bridgeTool,
-                arguments: ["--json", "bridge", "capabilities"],
-                environment: environment,
-                stdin: nil
-            )
+            let probe = try runBridgeProcess(runtime: runtime, arguments: ["--json", "bridge", "capabilities"])
             supportsBridge = try parseBridgeCapabilityProbe(probe)
         } catch {
             supportsBridge = false
@@ -850,17 +857,11 @@ private extension WineProcessMemoryService {
 
     private func runBridgeCommand(arguments: [String]) throws -> [String: Any] {
         let runtime = try runtimeBinaries()
-        guard let bridgeTool = runtime.bridgeTool else {
+        guard runtime.bridgeTool != nil else {
             throw WineProcessMemoryError.bridgeUnavailable
         }
 
-        let environment = commandEnvironment(for: runtime)
-        let result = try runProcess(
-            executableURL: bridgeTool,
-            arguments: ["--json"] + arguments,
-            environment: environment,
-            stdin: nil
-        )
+        let result = try runBridgeProcess(runtime: runtime, arguments: ["--json"] + arguments)
 
         let combined = result.stdout + result.stderr
         guard result.exitCode == 0 else {
@@ -885,6 +886,32 @@ private extension WineProcessMemoryService {
         }
 
         return object
+    }
+
+    private func runBridgeProcess(runtime: RuntimeBinaries, arguments: [String]) throws -> ProcessExecutionResult {
+        guard let bridgeTool = runtime.bridgeTool,
+              let bridgeMode = runtime.bridgeExecutionMode,
+              isBridgeToolRunnable(bridgeTool, mode: bridgeMode) else {
+            throw WineProcessMemoryError.bridgeUnavailable
+        }
+
+        let environment = commandEnvironment(for: runtime)
+        switch bridgeMode {
+        case .nativeHost:
+            return try runProcess(
+                executableURL: bridgeTool,
+                arguments: arguments,
+                environment: environment,
+                stdin: nil
+            )
+        case .winePE:
+            return try runProcess(
+                executableURL: runtime.wine,
+                arguments: [bridgeTool.path(percentEncoded: false)] + arguments,
+                environment: environment,
+                stdin: nil
+            )
+        }
     }
 
     private func cacheBridgeAvailability(_ isAvailable: Bool) -> Bool {
@@ -1378,16 +1405,19 @@ private extension WineProcessMemoryService {
             return urls
         }()
 
-        let bridgeCandidates: [URL] = {
-            var urls: [URL] = []
+        let bridgeCandidates: [BridgeCandidate] = {
+            var candidates: [BridgeCandidate] = []
             if let bridgeOverride = environmentOverrides["VECTOR_WINE_MEMCTL_OVERRIDE"]?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
                !bridgeOverride.isEmpty {
-                urls.append(URL(filePath: bridgeOverride))
+                let overrideURL = URL(filePath: bridgeOverride)
+                candidates.append(BridgeCandidate(
+                    url: overrideURL,
+                    executionMode: bridgeExecutionMode(for: overrideURL)
+                ))
             }
-            urls.append(selectedWine.deletingLastPathComponent().appending(path: "vectorvmctl"))
-            urls.append(selectedWine.deletingLastPathComponent().appending(path: "vector_memctl"))
-            return urls
+            candidates.append(contentsOf: defaultBridgeCandidates(for: selectedWine))
+            return candidates
         }()
 
         guard let winedbg = winedbgCandidates.first(where: {
@@ -1397,16 +1427,59 @@ private extension WineProcessMemoryService {
             throw WineProcessMemoryError.debuggerUnavailable
         }
 
-        let bridgeTool = bridgeCandidates.first(where: {
-            let path = $0.path(percentEncoded: false)
-            return FileManager.default.isExecutableFile(atPath: path)
+        let bridgeCandidate = bridgeCandidates.first(where: {
+            isBridgeToolRunnable($0.url, mode: $0.executionMode)
         })
 
-        let runtime = RuntimeBinaries(wine: selectedWine, winedbg: winedbg, bridgeTool: bridgeTool)
+        let runtime = RuntimeBinaries(
+            wine: selectedWine,
+            winedbg: winedbg,
+            bridgeTool: bridgeCandidate?.url,
+            bridgeExecutionMode: bridgeCandidate?.executionMode
+        )
         lock.lock()
         cachedRuntime = runtime
         lock.unlock()
         return runtime
+    }
+
+    private func defaultBridgeCandidates(for selectedWine: URL) -> [BridgeCandidate] {
+        let binFolder = selectedWine.deletingLastPathComponent()
+        let runtimeRoot = binFolder.deletingLastPathComponent()
+        var candidates: [BridgeCandidate] = [
+            BridgeCandidate(url: binFolder.appending(path: "vectorvmctl"), executionMode: .nativeHost),
+            BridgeCandidate(url: binFolder.appending(path: "vector_memctl"), executionMode: .nativeHost),
+            BridgeCandidate(url: binFolder.appending(path: "vectorvmctl.exe"), executionMode: .winePE),
+            BridgeCandidate(url: binFolder.appending(path: "vector_memctl.exe"), executionMode: .winePE)
+        ]
+
+        for archFolder in ["aarch64-windows", "x86_64-windows"] {
+            let libWineFolder = runtimeRoot.appending(path: "lib/wine/\(archFolder)")
+            candidates.append(BridgeCandidate(
+                url: libWineFolder.appending(path: "vectorvmctl.exe"),
+                executionMode: .winePE
+            ))
+            candidates.append(BridgeCandidate(
+                url: libWineFolder.appending(path: "vector_memctl.exe"),
+                executionMode: .winePE
+            ))
+        }
+
+        return candidates
+    }
+
+    private func bridgeExecutionMode(for url: URL) -> BridgeExecutionMode {
+        url.pathExtension.localizedCaseInsensitiveCompare("exe") == .orderedSame ? .winePE : .nativeHost
+    }
+
+    private func isBridgeToolRunnable(_ url: URL, mode: BridgeExecutionMode) -> Bool {
+        let path = url.path(percentEncoded: false)
+        switch mode {
+        case .nativeHost:
+            return FileManager.default.isExecutableFile(atPath: path)
+        case .winePE:
+            return FileManager.default.fileExists(atPath: path)
+        }
     }
 
     private func selectedWineBinary(fallback bundledWine: URL) -> URL {

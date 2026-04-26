@@ -461,6 +461,10 @@ public enum VectorProtectedTitlePolicyEngine {
                 url: VectorWineInstaller.steamCompatibilityWineserverBinary()
             ),
             runtimeRecord(label: "vectorvmctl", url: VectorWineInstaller.binFolder.appending(path: "vectorvmctl")),
+            runtimeRecord(
+                label: "vectorvmctl_pe",
+                url: VectorWineInstaller.binFolder.appending(path: "vectorvmctl.exe")
+            ),
             runtimeRecord(label: "dispatch_cache", url: nil)
         ]
 

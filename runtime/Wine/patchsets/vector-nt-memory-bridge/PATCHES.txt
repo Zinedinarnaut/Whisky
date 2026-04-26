@@ -3,4 +3,4 @@
 # Overlay source: vector-runtime-overlay
 # Generated at (UTC): 2026-04-02T00:50:44Z
 
-0001-vectorvmctl-nt-memory-bridge.patch  sha256=8cb0347f24f25e0c098835202f088524168c2735ce781fd6c308f613d298c896  lines=589  scope=programs
+0001-vectorvmctl-nt-memory-bridge.patch  sha256=077b459d379f9d988e1f092edad4bfc45df8fb5d4adbafba1db6ab3f2b150276  lines=593  scope=programs
