@@ -13,7 +13,11 @@ Usage:
     --dxvk-version <dxvk-version> \
     --d3dmetal-version <d3dmetal-version> \
     --winetricks-version <winetricks-version> \
-    --wine-mono-version <wine-mono-version>
+    --wine-mono-version <wine-mono-version> \
+    [--runtime-channel <channel>] \
+    [--build-id <id>] \
+    [--created-at <iso8601>] \
+    [--vectorvmctl-sha256 <sha256>]
 USAGE
 }
 
@@ -47,6 +51,10 @@ DXVK_VERSION=""
 D3DMETAL_VERSION=""
 WINETRICKS_VERSION=""
 WINE_MONO_VERSION=""
+RUNTIME_CHANNEL=""
+BUILD_ID=""
+CREATED_AT=""
+VECTORVMCTL_SHA256=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -86,6 +94,22 @@ while [[ $# -gt 0 ]]; do
       WINE_MONO_VERSION="$2"
       shift 2
       ;;
+    --runtime-channel)
+      RUNTIME_CHANNEL="$2"
+      shift 2
+      ;;
+    --build-id)
+      BUILD_ID="$2"
+      shift 2
+      ;;
+    --created-at)
+      CREATED_AT="$2"
+      shift 2
+      ;;
+    --vectorvmctl-sha256)
+      VECTORVMCTL_SHA256="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown argument: $1" >&2
       usage
@@ -115,6 +139,10 @@ SIGNATURE=$(PRIVATE_KEY_B64="$PRIVATE_KEY_B64" \
   WINE_MONO_VERSION="$WINE_MONO_VERSION" \
   WINE_VERSION="$WINE_VERSION" \
   WINETRICKS_VERSION="$WINETRICKS_VERSION" \
+  RUNTIME_CHANNEL="$RUNTIME_CHANNEL" \
+  BUILD_ID="$BUILD_ID" \
+  CREATED_AT="$CREATED_AT" \
+  VECTORVMCTL_SHA256="$VECTORVMCTL_SHA256" \
   swift - <<'SWIFT'
 import Foundation
 import CryptoKit
@@ -135,7 +163,7 @@ guard let privateKeyRaw = environment["PRIVATE_KEY_B64"],
     exit(1)
 }
 
-let canonicalObject: [String: String] = [
+var canonicalObject: [String: String] = [
     "archiveSHA256": archiveSHA256,
     "archiveURL": archiveURL,
     "d3dMetalVersion": d3dMetalVersion,
@@ -145,6 +173,22 @@ let canonicalObject: [String: String] = [
     "wineVersion": wineVersion,
     "winetricksVersion": winetricksVersion
 ]
+
+for key in ["RUNTIME_CHANNEL", "BUILD_ID", "CREATED_AT", "VECTORVMCTL_SHA256"] {
+    guard let value = environment[key], !value.isEmpty else { continue }
+    switch key {
+    case "RUNTIME_CHANNEL":
+        canonicalObject["runtimeChannel"] = value
+    case "BUILD_ID":
+        canonicalObject["buildID"] = value
+    case "CREATED_AT":
+        canonicalObject["createdAt"] = value
+    case "VECTORVMCTL_SHA256":
+        canonicalObject["vectorVMCTLSHA256"] = value
+    default:
+        break
+    }
+}
 
 do {
     let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: privateKeyData)
@@ -166,5 +210,27 @@ jq -n --arg version "$RUNTIME_VERSION" \
   --arg d3dMetalVersion "$D3DMETAL_VERSION" \
   --arg winetricksVersion "$WINETRICKS_VERSION" \
   --arg wineMonoVersion "$WINE_MONO_VERSION" \
+  --arg runtimeChannel "$RUNTIME_CHANNEL" \
+  --arg buildID "$BUILD_ID" \
+  --arg createdAt "$CREATED_AT" \
+  --arg vectorVMCTLSHA256 "$VECTORVMCTL_SHA256" \
   --arg signature "$SIGNATURE" \
-  '{manifest:{version:$version,archiveURL:$archiveURL,archiveSHA256:$archiveSHA256,wineVersion:$wineVersion,dxvkVersion:$dxvkVersion,d3dMetalVersion:$d3dMetalVersion,winetricksVersion:$winetricksVersion,wineMonoVersion:$wineMonoVersion},signature:$signature}' > "$OUTPUT"
+  '
+  {
+    manifest:{
+      version:$version,
+      archiveURL:$archiveURL,
+      archiveSHA256:$archiveSHA256,
+      wineVersion:$wineVersion,
+      dxvkVersion:$dxvkVersion,
+      d3dMetalVersion:$d3dMetalVersion,
+      winetricksVersion:$winetricksVersion,
+      wineMonoVersion:$wineMonoVersion
+    },
+    signature:$signature
+  }
+  | if $runtimeChannel != "" then .manifest.runtimeChannel = $runtimeChannel else . end
+  | if $buildID != "" then .manifest.buildID = $buildID else . end
+  | if $createdAt != "" then .manifest.createdAt = $createdAt else . end
+  | if $vectorVMCTLSHA256 != "" then .manifest.vectorVMCTLSHA256 = $vectorVMCTLSHA256 else . end
+  ' > "$OUTPUT"

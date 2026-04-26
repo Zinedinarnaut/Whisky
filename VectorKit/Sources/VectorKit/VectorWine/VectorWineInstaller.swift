@@ -20,25 +20,6 @@ import CryptoKit
 import Foundation
 import SemanticVersion
 
-public struct VectorWineRuntimeManifest: Codable, Sendable {
-    public let version: String
-    public let archiveURL: URL
-    public let archiveSHA256: String
-    public let wineVersion: String
-    public let dxvkVersion: String
-    public let d3dMetalVersion: String
-    public let winetricksVersion: String
-    public let wineMonoVersion: String
-
-    public var semanticVersion: SemanticVersion {
-        SemanticVersion(version) ?? SemanticVersion(0, 0, 0)
-    }
-
-    public var semanticWineVersion: SemanticVersion? {
-        SemanticVersion(wineVersion)
-    }
-}
-
 public enum VectorWineInstallerError: Error {
     case invalidManifestSignature
     case invalidManifestPayload
@@ -65,7 +46,7 @@ public class VectorWineInstaller {
     }()
 
     private static let defaultRuntimeBaseURL: URL = {
-        guard let url = URL(string: "https://raw.githubusercontent.com/Zinedinarnaut/Whisky/main/runtime/Wine") else {
+        guard let url = URL(string: "https://raw.githubusercontent.com/Zinedinarnaut/Vector/main/runtime/Wine") else {
             fatalError("Invalid URL string for defaultRuntimeBaseURL")
         }
         return url
@@ -133,6 +114,7 @@ public class VectorWineInstaller {
         if let manifest {
             try writeRuntimeVersionMetadata(from: manifest)
         }
+        writeInstallHealthMetadata(manifest: manifest)
     }
 
     public static func uninstall() {
@@ -326,7 +308,7 @@ private extension VectorWineInstaller {
     }
 
     static func canonicalManifestPayload(for manifest: VectorWineRuntimeManifest) throws -> Data {
-        let object: [String: String] = [
+        var object: [String: String] = [
             "archiveSHA256": manifest.archiveSHA256,
             "archiveURL": manifest.archiveURL.absoluteString,
             "d3dMetalVersion": manifest.d3dMetalVersion,
@@ -336,6 +318,10 @@ private extension VectorWineInstaller {
             "wineVersion": manifest.wineVersion,
             "winetricksVersion": manifest.winetricksVersion
         ]
+        object["runtimeChannel"] = manifest.runtimeChannel
+        object["buildID"] = manifest.buildID
+        object["createdAt"] = manifest.createdAt
+        object["vectorVMCTLSHA256"] = manifest.vectorVMCTLSHA256
 
         return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }

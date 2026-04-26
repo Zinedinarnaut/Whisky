@@ -559,8 +559,22 @@ struct VectorSecurity: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "security",
         abstract: "Protected multiplayer and studio-review tooling.",
-        subcommands: [Export.self]
+        subcommands: [Host.self, Export.self]
     )
+
+    struct Host: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Print host security capabilities as JSON."
+        )
+
+        mutating func run() throws {
+            let data = try VectorHostSecurityCapabilityProbe.currentJSON()
+            guard let output = String(data: data, encoding: .utf8) else {
+                throw ValidationError("Failed to encode host security report.")
+            }
+            print(output)
+        }
+    }
 
     struct Export: ParsableCommand {
         static let configuration = CommandConfiguration(

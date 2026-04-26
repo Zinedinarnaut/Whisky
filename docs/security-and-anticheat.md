@@ -36,6 +36,28 @@ Memory tooling is gated behind Developer Mode and records JSON-lines audit event
 
 Detected ARC Raiders and generic protected anti-cheat launchers show a clear blocked message and point users to supported alternatives. Vector scans for Easy Anti-Cheat, EOS Anti-Cheat, BattlEye, Ricochet-like service markers, Vanguard, EQU8, Xigncode, Wellbia, nProtect/GameGuard, and FaceIt-style artifacts.
 
+## Host security capability probe
+
+Vector now records host security posture as part of diagnostics and studio-review exports. The probe is intentionally read-only and checks:
+
+- Full, Reduced, permissive, or unknown security posture from SIP/authenticated-root/NVRAM evidence.
+- Startup Security policy evidence from `bputil` when macOS allows it.
+- SIP and authenticated root state.
+- System Extension and DriverKit host availability.
+- Whether the app has DriverKit-related entitlements.
+- Rosetta and translated-process state.
+- Metal device availability.
+- GPTK/D3DMetal payload availability.
+- Vector runtime installation state.
+
+Reduced Security does not loosen protected multiplayer rules. It only allows Vector to unlock deeper single-player diagnostics when Developer Mode is also enabled.
+
+Export command:
+
+```sh
+vectorcmd security host
+```
+
 ## VecPatch protected rule model
 
 VecPatch rules include security metadata:
@@ -56,6 +78,7 @@ Remote VecPatch rules are verified with Ed25519 when signed-rule enforcement is 
 Vector can export a studio-review bundle containing:
 
 - Runtime binary paths and SHA-256 hashes.
+- Host security capabilities and advanced diagnostics state.
 - Vector runtime attestation schema v2 with app code-signing identifier, team identifier, signing authorities, entitlements, notarization assessment, hardened-runtime state, and patchset digest.
 - Vector version metadata.
 - Wine, DXVK, D3DMetal, Winetricks, and Wine Mono version metadata where available.

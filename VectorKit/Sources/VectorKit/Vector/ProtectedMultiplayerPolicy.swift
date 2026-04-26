@@ -158,6 +158,7 @@ public struct RuntimeAttestationRecord: Codable, Equatable, Sendable {
 public struct VectorRuntimeAttestation: Codable, Equatable, Sendable {
     public var schemaVersion: Int
     public var generatedAt: String
+    public var hostCapabilities: VectorHostSecurityCapabilityReport
     public var vectorVersion: String
     public var wineVersion: String
     public var dxvkVersion: String
@@ -200,6 +201,26 @@ public enum VectorDeveloperToolPolicy {
             return true
         }
         return UserDefaults.standard.bool(forKey: "VectorDeveloperToolsEnabled")
+    }
+
+    public static var advancedDiagnosticsEnabled: Bool {
+        guard developerToolsEnabled else {
+            return false
+        }
+        return VectorHostSecurityCapabilityProbe.current().hostAllowsAdvancedDiagnostics
+    }
+
+    public static func assertAdvancedDiagnosticsAllowed() throws {
+        guard developerToolsEnabled else {
+            throw WineProcessMemoryError.protectedToolingUnavailable(
+                "Advanced diagnostics require Developer Mode."
+            )
+        }
+        guard VectorHostSecurityCapabilityProbe.current().hostAllowsAdvancedDiagnostics else {
+            throw WineProcessMemoryError.protectedToolingUnavailable(
+                "Advanced diagnostics require Reduced Security, permissive security, or disabled SIP."
+            )
+        }
     }
 }
 
@@ -471,6 +492,7 @@ public enum VectorProtectedTitlePolicyEngine {
         return VectorRuntimeAttestation(
             schemaVersion: 2,
             generatedAt: isoDateString(),
+            hostCapabilities: VectorHostSecurityCapabilityProbe.current(),
             vectorVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
             wineVersion: info?.wineVersion?.description ?? "unknown",
             dxvkVersion: info?.dxvkVersion ?? "unknown",

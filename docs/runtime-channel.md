@@ -102,6 +102,33 @@ export PATH="/path/to/llvm-mingw/bin:/opt/homebrew/opt/llvm/bin:/opt/homebrew/op
 The runtime archive should only be published after `Wine/bin/vectorvmctl` is
 present and `scripts/runtime/validate_runtime_archive.sh` passes.
 
+## Package A Runtime Locally
+
+Use `package_vector_runtime.sh` to build the archive that Vector expects to
+install. It stages `Libraries/`, optionally inserts `vectorvmctl.exe`, records
+build metadata, signs Mach-O binaries when an identity is provided, creates the
+tarball, hashes it, and can generate the signed manifest in the same run.
+
+```bash
+PRIVATE_KEY_B64="$RUNTIME_MANIFEST_PRIVATE_KEY" \
+scripts/runtime/package_vector_runtime.sh \
+  --runtime-root "/path/to/runtime-root" \
+  --output "/tmp/Libraries.tar.gz" \
+  --version "2.6.0" \
+  --archive-url "https://example.com/Libraries.tar.gz" \
+  --wine-version "11.0" \
+  --dxvk-version "2.x" \
+  --d3dmetal-version "3.x" \
+  --winetricks-version "20260125" \
+  --wine-mono-version "latest" \
+  --vectorvmctl "/path/to/vectorvmctl.exe" \
+  --manifest-output "/tmp/manifest.json" \
+  --runtime-channel stable
+```
+
+Installed runtimes write `VectorRuntimeInstallHealth.json` so Vector can show
+whether core files and the memory bridge were present after extraction.
+
 ## Proton-style compatibility catalogs
 
 Patchsets whose directory name does not start with `vector-*` are treated as

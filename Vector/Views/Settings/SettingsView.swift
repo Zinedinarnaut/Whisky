@@ -32,6 +32,7 @@ struct SettingsView: View {
     @AppStorage("VectorDeveloperToolsEnabled") var developerToolsEnabled = false
 
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var hostCapabilities = VectorHostSecurityCapabilityProbe.current()
 
     var body: some View {
         Form {
@@ -95,17 +96,36 @@ struct SettingsView: View {
                 }
             }
 
-#if DEBUG
-            Section("Developer") {
+            Section("Host Capabilities") {
+                capabilityRow("Security", hostCapabilities.securityMode.displayName)
+                capabilityRow("SIP", hostCapabilities.sipState.displayName)
+                capabilityRow(
+                    "System Extensions",
+                    hostCapabilities.systemExtensionsAvailable ? "Available" : "Unavailable"
+                )
+                capabilityRow(
+                    "DriverKit",
+                    hostCapabilities.driverKitHostAvailable ? driverKitLabel : "Unavailable"
+                )
+                capabilityRow("Rosetta", hostCapabilities.rosettaInstalled ? "Installed" : "Missing")
+                capabilityRow("Metal", hostCapabilities.metalDeviceName)
+                capabilityRow(
+                    "Advanced Diagnostics",
+                    hostCapabilities.advancedDiagnosticsUnlocked ? "Unlocked" : "Locked"
+                )
+
                 Toggle("Developer Mode", isOn: $developerToolsEnabled)
                 Text(
-                    "Enables Wine memory tooling for single-player/debug bottles only. "
-                        + "Protected multiplayer titles stay locked."
+                    "Developer Mode unlocks single-player diagnostics only. Protected multiplayer "
+                        + "titles stay locked even on Reduced Security."
                 )
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Button("Refresh Host Probe") {
+                    hostCapabilities = VectorHostSecurityCapabilityProbe.current()
+                }
             }
-#endif
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
@@ -119,6 +139,24 @@ struct SettingsView: View {
                     await refreshNotificationAuthorizationStatus()
                 }
             }
+        }
+        .onChange(of: developerToolsEnabled) {
+            hostCapabilities = VectorHostSecurityCapabilityProbe.current()
+        }
+    }
+
+    private var driverKitLabel: String {
+        hostCapabilities.driverKitAppEntitled ? "Host + Entitlement" : "Host Only"
+    }
+
+    private func capabilityRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
     }
 
