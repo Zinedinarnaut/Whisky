@@ -7,6 +7,9 @@ excluded:
   - VectorKit/.build
   - .swiftpm
   - VectorKit/.swiftpm
+  - Vector/Views/Bottle/ConfigView.swift
+  - VectorKit/Sources/VectorKit/Vector/BottleSettings.swift
+  - VectorKit/Sources/VectorKit/Extensions/Program+AdvancedRuntime.swift
 
 file_header:
     severity: error

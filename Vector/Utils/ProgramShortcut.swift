@@ -22,6 +22,7 @@ import QuickLookThumbnailing
 import VectorKit
 
 class ProgramShortcut {
+    // swiftlint:disable function_body_length
     public static func createShortcut(_ program: Program, app: URL, name: String) async {
         let contents = app.appending(path: "Contents")
         let macos = contents.appending(path: "MacOS")
@@ -58,6 +59,10 @@ class ProgramShortcut {
                 <string>14.0</string>
                 <key>LSApplicationCategoryType</key>
                 <string>public.app-category.games</string>
+                <key>LSSupportsGameMode</key>
+                <true/>
+                <key>GCSupportsGameMode</key>
+                <true/>
             </dict>
             </plist>
             """
@@ -80,4 +85,5 @@ class ProgramShortcut {
             print(error)
         }
     }
+    // swiftlint:enable function_body_length
 }

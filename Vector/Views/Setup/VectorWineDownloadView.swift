@@ -17,6 +17,8 @@
 //
 
 import SwiftUI
+import DockProgress
+import Shimmer
 import VectorKit
 
 struct VectorWineDownloadView: View {
@@ -48,6 +50,9 @@ struct VectorWineDownloadView: View {
                     HStack {
                         HStack {
                             Text(verbatim: formattedProgressStatusText())
+                                .shimmering(
+                                    active: downloadError == nil && fractionProgress > 0 && fractionProgress < 1
+                                )
                             Spacer()
                         }
                         .font(.subheadline)
@@ -80,6 +85,7 @@ struct VectorWineDownloadView: View {
             observation = nil
             downloadTask?.cancel()
             downloadTask = nil
+            DockProgress.resetProgress()
         }
     }
 
@@ -144,6 +150,7 @@ struct VectorWineDownloadView: View {
         observation = nil
         downloadTask?.cancel()
         downloadTask = nil
+        DockProgress.resetProgress()
         downloadError = nil
         completedBytes = 0
         totalBytes = 0
@@ -178,6 +185,7 @@ struct VectorWineDownloadView: View {
     private func handleDownloadCompletion(url: URL?, error: Error?, manifest: VectorWineRuntimeManifest) async {
         if let error {
             await MainActor.run {
+                DockProgress.resetProgress()
                 downloadError = error.localizedDescription
             }
             return
@@ -185,6 +193,7 @@ struct VectorWineDownloadView: View {
 
         guard let url else {
             await MainActor.run {
+                DockProgress.resetProgress()
                 downloadError = "Download finished without a file URL"
             }
             return
@@ -193,6 +202,7 @@ struct VectorWineDownloadView: View {
         do {
             try VectorWineInstaller.verifyArchive(at: url, expectedSHA256: manifest.archiveSHA256)
             await MainActor.run {
+                DockProgress.progress = 1
                 tarLocation = url
                 runtimeManifest = manifest
                 proceed()
@@ -200,6 +210,7 @@ struct VectorWineDownloadView: View {
         } catch {
             try? FileManager.default.removeItem(at: url)
             await MainActor.run {
+                DockProgress.resetProgress()
                 downloadError = "Runtime checksum verification failed. Please retry."
             }
         }
@@ -221,5 +232,6 @@ struct VectorWineDownloadView: View {
         } else {
             fractionProgress = 0
         }
+        DockProgress.progress = max(0, min(1, fractionProgress))
     }
 }

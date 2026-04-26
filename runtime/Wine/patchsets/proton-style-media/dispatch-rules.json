@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-24T11:42:35Z",
+  "changelog": "Bundled Proton-style compatibility rules for media, web auth, and Steam launch recovery.",
+  "rules": [
+    {
+      "id": "proton-style-minecraft-dungeons-media-auth-v1",
+      "name": "Proton-style: Minecraft Dungeons media/auth",
+      "executable_match": "dungeons-win64-shipping.exe",
+      "steam_app_id": "1672970",
+      "arguments": "-force-d3d11 -dx11 -d3d11 -cef-disable-gpu -cef-disable-gpu-compositing -cef-disable-accelerated-video-decode -cef-disable-low-latency-dxva -cef-disable-zero-copy-dxgi-video -nosound",
+      "environment": {
+        "WINEDLLOVERRIDES": "dxgi,d3d11,d3d10core,d3d9=n,b;nvapi,nvapi64=d",
+        "DXVK_ENABLE_NVAPI": "0",
+        "PROTON_ENABLE_NVAPI": "0",
+        "SteamNoOverlayUIDrawing": "1",
+        "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
+        "VECTOR_PROTON_STYLE_COMPAT": "1",
+        "VECTOR_PROTON_MEDIA_SHIMS": "1",
+        "VECTOR_MEDIA_FOUNDATION_MODE": "proton-style"
+      },
+      "enabled": true,
+      "channel": "stable",
+      "signature": "bundled-proton-style-catalog",
+      "changelog": "Routes Steam-owned Minecraft Dungeons through Steam with DX11, CEF GPU fallback, and Proton-style media/auth markers while avoiding broad mmdevapi disable.",
+      "priority": 5,
+      "rule_version": 1,
+      "graphics_backend": "dxvk",
+      "fallback_graphics_backend": "wined3d",
+      "source": "proton"
+    }
+  ]
+}

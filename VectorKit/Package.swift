@@ -37,6 +37,10 @@ let package = Package(
         .target(
             name: "VectorKit",
             dependencies: ["SemanticVersion"]
+        ),
+        .testTarget(
+            name: "VectorKitTests",
+            dependencies: ["VectorKit"]
         )
     ],
     swiftLanguageVersions: [.version("6")]

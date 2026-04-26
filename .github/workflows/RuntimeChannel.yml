@@ -47,6 +47,11 @@ on:
         required: false
         default: false
         type: boolean
+      require_nt_memory_bridge:
+        description: "Require vectorvmctl NT memory bridge tool inside runtime archive"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -71,6 +76,12 @@ jobs:
           mkdir -p runtime/Wine .tmp/runtime
           curl -fL "${{ inputs.archive_url }}" -o .tmp/runtime/Libraries.tar.gz
           curl -fL "${{ inputs.version_plist_url }}" -o runtime/Wine/VectorWineVersion.plist
+
+      - name: Validate runtime archive tools
+        run: |
+          scripts/runtime/validate_runtime_archive.sh \
+            --archive .tmp/runtime/Libraries.tar.gz \
+            --require-nt-memory-bridge "${{ inputs.require_nt_memory_bridge }}"
 
       - name: Resolve runtime metadata
         id: runtime
@@ -120,6 +131,9 @@ jobs:
             .tmp/runtime/Libraries.tar.gz
             runtime/Wine/VectorWineVersion.plist
             runtime/Wine/manifest.json
+            runtime/Wine/patchsets/vector-nt-memory-bridge/patchset.json
+            runtime/Wine/patchsets/vector-nt-memory-bridge/PATCHES.txt
+            runtime/Wine/patchsets/vector-nt-memory-bridge/patches/*.patch
 
       - name: Commit runtime channel metadata
         run: |

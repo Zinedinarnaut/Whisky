@@ -18,19 +18,47 @@
 
 import SwiftUI
 import Sparkle
+import WhatsNewKit
 import VectorKit
 
 @main
 struct VectorApp: App {
     @State var showSetup: Bool = false
+    @State private var whatsNew: WhatsNew?
+    @AppStorage("vector.whatsnew.2026.04") private var hasShownWhatsNewSheet = false
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.openURL) var openURL
     private let updaterController: SPUStandardUpdaterController
+
+    private static let latestWhatsNew = WhatsNew(
+        title: "What's New in Vector",
+        features: [
+            .init(
+                image: .init(systemName: "square.grid.3x3.rightfilled", foregroundColor: .blue),
+                title: "Minimal Home + Action Sidebar",
+                subtitle: "Home now uses a cleaner layout with a dedicated right-side control panel for quick actions."
+            ),
+            .init(
+                image: .init(systemName: "shippingbox.fill", foregroundColor: .orange),
+                title: "Dependency Health Prompts",
+                subtitle: .init(
+                    "Install Missing Dependencies appears only when launch logs or backend checks "
+                        + "detect a real issue."
+                )
+            ),
+            .init(
+                image: .init(systemName: "cpu.fill", foregroundColor: .mint),
+                title: "DXMT Runtime Wiring",
+                subtitle: "DXMT backend now auto-installs payloads and wires them into the active Vector runtime path."
+            )
+        ]
+    )
 
     init() {
         updaterController = SPUStandardUpdaterController(startingUpdater: true,
                                                          updaterDelegate: nil,
                                                          userDriverDelegate: nil)
+        VectorNotifications.configure()
     }
 
     var body: some Scene {
@@ -38,11 +66,17 @@ struct VectorApp: App {
             ContentView(showSetup: $showSetup)
                 .frame(minWidth: ViewWidth.large, minHeight: 316)
                 .environmentObject(BottleVM.shared)
+                .sheet(whatsNew: $whatsNew)
                 .onAppear {
                     NSWindow.allowsAutomaticWindowTabbing = false
 
                     Task.detached {
                         await VectorApp.deleteOldLogs()
+                    }
+
+                    if !hasShownWhatsNewSheet {
+                        whatsNew = VectorApp.latestWhatsNew
+                        hasShownWhatsNewSheet = true
                     }
                 }
         }
@@ -120,12 +154,27 @@ struct VectorApp: App {
     }
 
     static func killBottles() {
+        var didFail = false
         for bottle in BottleVM.shared.bottles {
             do {
                 try Wine.killBottle(bottle: bottle)
             } catch {
                 print("Failed to kill bottle: \(error)")
+                didFail = true
             }
+        }
+
+        if didFail {
+            VectorNotifications.notifyMaintenanceFailed(
+                task: "Kill bottles",
+                bottleName: "All bottles",
+                reason: "One or more wineserver processes failed to terminate."
+            )
+        } else {
+            VectorNotifications.notifyMaintenanceCompleted(
+                task: "Kill bottles",
+                bottleName: "All bottles"
+            )
         }
     }
 
@@ -174,6 +223,11 @@ struct VectorApp: App {
         do {
             try getconf.run()
         } catch {
+            VectorNotifications.notifyMaintenanceFailed(
+                task: "Clear shader cache",
+                bottleName: "All bottles",
+                reason: error.localizedDescription
+            )
             return
         }
         getconf.waitUntilExit()
@@ -193,7 +247,16 @@ struct VectorApp: App {
             .appending(path: "d3dm").path
         do {
             try FileManager.default.removeItem(atPath: d3dmPath)
+            VectorNotifications.notifyMaintenanceCompleted(
+                task: "Clear shader cache",
+                bottleName: "All bottles"
+            )
         } catch {
+            VectorNotifications.notifyMaintenanceFailed(
+                task: "Clear shader cache",
+                bottleName: "All bottles",
+                reason: error.localizedDescription
+            )
             return
         }
     }

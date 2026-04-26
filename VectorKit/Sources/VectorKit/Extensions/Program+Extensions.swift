@@ -20,25 +20,17 @@ import Foundation
 import AppKit
 import os.log
 
+// swiftlint:disable file_length
 extension Program {
     private static let wineBinaryOverrideEnvironmentKey = "VECTOR_WINE_BIN_OVERRIDE"
     private static let wineserverBinaryOverrideEnvironmentKey = "VECTOR_WINESERVER_BIN_OVERRIDE"
     private static let steamExecutable = "steam.exe"
-    private static let steamPackageArchiveURL =
-        "http://web.archive.org/web/20250306194830if_/media.steampowered.com/client"
     private static let steamBootstrapMarkerFilename = ".vector-steam-bootstrap-v3"
     private static let steamHTMLCacheResetMarkerFilename = ".vector-steam-htmlcache-reset-v4"
-    private static let steamDisableSafeFlagsDefaultsKey = "steamDisableAutoSafeLaunchFlags"
-    private static let steamLegacyCompatDefaultsKey = "steamLegacyCompatMode"
-    private static let steamUseLegacyBootstrapDefaultsKey = "steamUseLegacyBootstrap"
-    private static let steamForceNoBrowserDefaultsKey = "steamForceNoBrowser"
-    private static let steamUseLegacyExtraFlagsDefaultsKey = "steamUseLegacyExtraFlags"
+    private static let gameModeLaunchersDirectoryName = ".vector-gamemode-launchers"
     private static let steamBootstrapExitArgument = "-exitsteam"
     private static let steamSafeLaunchArguments = [
-        "-cef-disable-gpu",
-        "-cef-disable-gpu-compositing",
-        "-cef-disable-d3d11",
-        "-no-cef-sandbox"
+        "-cef-disable-gpu"
     ]
     private static let steamLegacyExtraLaunchArguments = [
         "-cef-disable-breakpad",
@@ -46,20 +38,16 @@ extension Program {
         "-nocrashmonitor",
         "-noshaders"
     ]
-    private static let steamBootstrapArguments = [
+    private static let steamBootstrapArgumentPrefix = [
         "-forcesteamupdate",
         "-forcepackagedownload",
-        "-overridepackageurl",
-        steamPackageArchiveURL,
         "-exitsteam"
     ]
-    private static let steamPinnedBootstrapArguments = [
+    private static let steamPinnedBootstrapArgumentPrefix = [
         "-noverifyfiles",
         "-nobootstrapupdate",
         "-skipinitialbootstrap",
-        "-norepairfiles",
-        "-overridepackageurl",
-        steamPackageArchiveURL
+        "-norepairfiles"
     ]
 
     public func run() {
@@ -70,34 +58,254 @@ extension Program {
         }
     }
 
+    // swiftlint:disable function_body_length cyclomatic_complexity
     func runInWine() {
-        let arguments = runtimeArguments()
-        let environment = runtimeEnvironment()
-
         Task.detached(priority: .userInitiated) {
             do {
+                VectorNotifications.notifyLaunchStarted(
+                    programName: self.name,
+                    bottleName: self.bottle.settings.name
+                )
+                await BottleGamingModeManager.prepareProfilesForLaunch(for: self.bottle)
+
+                var arguments = self.runtimeArguments()
+                let launchURL = self.resolvedLaunchExecutableURL(arguments: &arguments)
+                let environment = self.runtimeEnvironment()
+                let activeSteamAppID = self.bottle.settings.activeSteamAppID
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let shouldLaunchSilentHillFViaSteam =
+                    self.shouldLaunchSilentHillFViaSteam(activeSteamAppID: activeSteamAppID)
+                let shouldLaunchMinecraftDungeonsViaSteam =
+                    self.shouldLaunchMinecraftDungeonsViaSteam(activeSteamAppID: activeSteamAppID)
+                let silentHillFSteamExecutable =
+                    shouldLaunchSilentHillFViaSteam ? self.steamLaunchExecutableURL() : nil
+                let minecraftDungeonsSteamExecutable =
+                    shouldLaunchMinecraftDungeonsViaSteam ? self.steamLaunchExecutableURL() : nil
+                let shouldForceDirectLaunch = self.shouldApplyMinecraftDungeonsCompatibility(
+                    activeSteamAppID: activeSteamAppID
+                ) && minecraftDungeonsSteamExecutable == nil
+
+                self.prepareLaunchCompatibilityShims()
+                guard await self.shouldProceedWithLaunchPreflight() else { return }
+                await self.prepareMinecraftDungeonsDirectLaunch(
+                    environment: environment,
+                    shouldForceDirectLaunch: shouldForceDirectLaunch
+                )
+                if minecraftDungeonsSteamExecutable != nil {
+                    await self.ensureMinecraftDungeonsAppDefaults(environment: environment)
+                }
+                if !self.isSteamProgram {
+                    try await self.resetSteamWineserver(environment: environment)
+                }
                 if self.isSteamProgram {
                     try await self.runSteamInWine(arguments: arguments, environment: environment)
+                } else if let steamExecutable = silentHillFSteamExecutable {
+                    _ = try await Wine.runProgramWithTerminationStatus(
+                        at: steamExecutable,
+                        args: self.silentHillFSteamLaunchArguments(),
+                        bottle: self.bottle,
+                        environment: environment
+                    )
+                } else if let steamExecutable = minecraftDungeonsSteamExecutable {
+                    _ = try await Wine.runProgramWithTerminationStatus(
+                        at: steamExecutable,
+                        args: self.minecraftDungeonsSteamLaunchArguments(),
+                        bottle: self.bottle,
+                        environment: environment
+                    )
+                } else if shouldForceDirectLaunch {
+                    let status = try await Wine.runProgramDirectWithTerminationStatus(
+                        at: launchURL,
+                        args: arguments,
+                        bottle: self.bottle,
+                        environment: environment
+                    )
+                    if status != 0 {
+                        throw NSError(
+                            domain: "Vector.DirectLaunch",
+                            code: Int(status),
+                            userInfo: [
+                                NSLocalizedDescriptionKey:
+                                    "\(launchURL.lastPathComponent) exited with status \(status)."
+                            ]
+                        )
+                    }
+                } else if self.bottle.settings.nativeGameModeLaunchesEnabled && !shouldLaunchSilentHillFViaSteam {
+                    try self.runInNativeGameMode(launchURL: launchURL, arguments: arguments, environment: environment)
+                } else if shouldLaunchSilentHillFViaSteam {
+                    let status = try await Wine.runProgramDirectWithTerminationStatus(
+                        at: launchURL,
+                        args: arguments,
+                        bottle: self.bottle,
+                        environment: environment
+                    )
+                    if status != 0 {
+                        throw NSError(
+                            domain: "Vector.DirectLaunch",
+                            code: Int(status),
+                            userInfo: [
+                                NSLocalizedDescriptionKey:
+                                    "\(launchURL.lastPathComponent) exited with status \(status)."
+                            ]
+                        )
+                    }
                 } else {
                     try await Wine.runProgram(
-                        at: self.url,
+                        at: launchURL,
                         args: arguments,
                         bottle: self.bottle,
                         environment: environment
                     )
                 }
+                await DispatchPatchService.shared.reportTelemetry(
+                    for: self.bottle,
+                    programPath: launchURL.path(percentEncoded: false),
+                    success: true
+                )
+                VectorNotifications.notifyLaunchSucceeded(
+                    programName: self.name,
+                    bottleName: self.bottle.settings.name
+                )
             } catch {
+                await DispatchPatchService.shared.reportTelemetry(
+                    for: self.bottle,
+                    programPath: self.url.path(percentEncoded: false),
+                    success: false,
+                    crashSignature: error.localizedDescription
+                )
+                VectorNotifications.notifyLaunchFailed(
+                    programName: self.name,
+                    bottleName: self.bottle.settings.name,
+                    reason: error.localizedDescription
+                )
                 await MainActor.run {
                     self.showRunError(message: error.localizedDescription)
                 }
             }
         }
     }
+    // swiftlint:enable function_body_length cyclomatic_complexity
+
+    private func prepareMinecraftDungeonsDirectLaunch(
+        environment: [String: String],
+        shouldForceDirectLaunch: Bool
+    ) async {
+        guard shouldForceDirectLaunch else {
+            return
+        }
+
+        await ensureMinecraftDungeonsAppDefaults(environment: environment)
+    }
+
+    private func runInNativeGameMode(launchURL: URL, arguments: [String], environment: [String: String]) throws {
+        let launcherURL = try buildNativeGameModeLauncher(
+            launchURL: launchURL,
+            arguments: arguments,
+            environment: environment
+        )
+
+        let process = Process()
+        process.executableURL = URL(filePath: "/usr/bin/open")
+        process.arguments = ["-n", launcherURL.path(percentEncoded: false)]
+        process.qualityOfService = .userInitiated
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw NSError(
+                domain: "Vector.GameModeLaunch",
+                code: Int(process.terminationStatus),
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Failed to launch native Game Mode wrapper."
+                ]
+            )
+        }
+    }
+
+    // swiftlint:disable function_body_length
+    private func buildNativeGameModeLauncher(
+        launchURL: URL,
+        arguments: [String],
+        environment: [String: String]
+    ) throws -> URL {
+        let launcherRoot = bottle.url.appending(path: Self.gameModeLaunchersDirectoryName)
+        let sanitizedName = name
+            .replacingOccurrences(of: ".exe", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "/", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let launcherName = sanitizedName.isEmpty ? "Game" : sanitizedName
+        let appURL = launcherRoot.appending(path: launcherName).appendingPathExtension("app")
+        let contentsURL = appURL.appending(path: "Contents")
+        let macOSURL = contentsURL.appending(path: "MacOS")
+
+        try FileManager.default.createDirectory(at: macOSURL, withIntermediateDirectories: true)
+
+        let argumentString = arguments.joined(separator: " ")
+        let runCommand = Wine.generateRunCommand(
+            at: launchURL,
+            bottle: bottle,
+            args: argumentString,
+            environment: environment
+        )
+        let launcherScript = """
+        #!/bin/bash
+        \(runCommand)
+        """
+
+        let launcherExecutableURL = macOSURL.appending(path: "launch")
+        try launcherScript.write(to: launcherExecutableURL, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: launcherExecutableURL.path(percentEncoded: false)
+        )
+
+        let bundleIdentifierSuffix = String(UInt64(bitPattern: Int64(url.path(percentEncoded: false).hashValue)))
+        let plistContents = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>launch</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.isaacmarovitz.Vector.GameMode.\(bundleIdentifierSuffix)</string>
+            <key>CFBundleName</key>
+            <string>\(launcherName)</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleSupportedPlatforms</key>
+            <array>
+                <string>MacOSX</string>
+            </array>
+            <key>LSMinimumSystemVersion</key>
+            <string>14.0</string>
+            <key>LSApplicationCategoryType</key>
+            <string>public.app-category.games</string>
+            <key>LSSupportsGameMode</key>
+            <true/>
+            <key>GCSupportsGameMode</key>
+            <true/>
+        </dict>
+        </plist>
+        """
+
+        try plistContents.write(
+            to: contentsURL.appending(path: "Info").appendingPathExtension("plist"),
+            atomically: false,
+            encoding: .utf8
+        )
+
+        return appURL
+    }
+    // swiftlint:enable function_body_length
 
     public func generateTerminalCommand() -> String {
-        let arguments = runtimeArguments().joined(separator: " ")
+        var arguments = runtimeArguments()
+        let launchURL = resolvedLaunchExecutableURL(arguments: &arguments)
+        let argumentString = arguments.joined(separator: " ")
         return Wine.generateRunCommand(
-            at: self.url, bottle: bottle, args: arguments, environment: runtimeEnvironment()
+            at: launchURL, bottle: bottle, args: argumentString, environment: runtimeEnvironment()
         )
     }
 
@@ -119,7 +327,17 @@ extension Program {
             if let error = error {
                 Logger.wineKit.error("Failed to run terminal script \(error)")
                 guard let description = error["NSAppleScriptErrorMessage"] as? String else { return }
+                VectorNotifications.notifyLaunchFailed(
+                    programName: self.name,
+                    bottleName: self.bottle.settings.name,
+                    reason: description
+                )
                 await self.showRunError(message: String(describing: description))
+            } else {
+                VectorNotifications.notifyLaunchSucceeded(
+                    programName: self.name,
+                    bottleName: self.bottle.settings.name
+                )
             }
         }
     }
@@ -137,19 +355,45 @@ extension Program {
 
     private func runtimeEnvironment() -> [String: String] {
         var environment = generateEnvironment()
+        applyBottleRuntimeSelection(to: &environment)
+        applySteamUIRuntimeFallback(to: &environment)
+        applyProfileEnvironment(to: &environment)
+        applyInstallerCompatibilityEnvironmentOverrides(to: &environment)
+        applyMediaPlaybackEnvironmentOverrides(to: &environment)
+        applyHighOnLife2EnvironmentOverrides(to: &environment)
+        applyParcelSimulatorEnvironmentOverrides(to: &environment)
+        applyMinecraftDungeonsEnvironmentOverrides(to: &environment)
+        applyContentWarningEnvironmentOverrides(to: &environment)
+        applyTitanfall2EnvironmentOverrides(to: &environment)
+        applyOriginEnvironmentOverrides(to: &environment)
+        applySilentHillFEnvironmentOverrides(to: &environment)
+        applyElectronWindowEnvironmentOverrides(to: &environment)
         if isSteamProgram {
             sanitizeSteamEnvironment(&environment, usingCompatibilityRuntime: isUsingSteamCompatibilityRuntime)
         }
 
         let normalizedPath = url.path(percentEncoded: false).lowercased()
+        let runtimeSelection = bottle.settings.runtimeSelection
+        let allowsSteamCompatibilityRuntime =
+            runtimeSelection == .compatibility
+            || (runtimeSelection == .auto && !VectorWineInstaller.isCrossOverBottleURL(bottle.url))
         let shouldUseSteamCompatRuntime =
+            allowsSteamCompatibilityRuntime
+            &&
             isUsingSteamCompatibilityRuntime
+            &&
+            isSteamProgram
             && (normalizedPath.contains("/program files (x86)/steam/")
                 || normalizedPath.contains("/program files/steam/"))
         if shouldUseSteamCompatRuntime {
-            applySteamCompatibilityDLLOverrides(&environment)
+            if isSteamProgram {
+                applySteamCompatibilityDLLOverrides(&environment)
+            }
             injectSteamCompatibilityWineOverride(&environment)
         }
+        applySteamEnvironmentOverrides(to: &environment)
+        applyDLSSRuntimeTranslationEnvironmentOverrides(to: &environment)
+        applySmartGraphicsBackendSelection(to: &environment)
         return environment
     }
 
@@ -157,7 +401,21 @@ extension Program {
         var arguments = settings.arguments.split { $0.isWhitespace }.map(String.init)
 
         guard isSteamProgram else {
+            appendUnique(arguments: &arguments, newArguments: d3d11CompatibilityArguments())
+            appendUnique(arguments: &arguments, newArguments: profileArguments())
+            appendUnique(arguments: &arguments, newArguments: minecraftDungeonsCompatibilityArguments())
+            appendUnique(arguments: &arguments, newArguments: electronWindowArguments())
+            normalizeGraphicsAPIArguments(arguments: &arguments)
             return arguments
+        }
+
+        normalizeSteamAppLaunchArguments(
+            arguments: &arguments,
+            fallbackAppID: bottle.settings.activeSteamAppID
+        )
+        if steamLaunchesSpecificApp(arguments: arguments) {
+            // Do not inject Steam client bootstrap/safe flags into app-launch commands.
+            return steamRecoveryArguments(from: arguments)
         }
 
         resetSteamHTMLCacheIfNeeded()
@@ -169,6 +427,12 @@ extension Program {
             appendUnique(arguments: &arguments, newArguments: steamBootstrapCompatibilityArguments())
         }
 
+        if !bottle.settings.steamForceNoBrowser {
+            removeArgument(arguments: &arguments, argumentToRemove: "-no-browser")
+        }
+
+        arguments = steamRecoveryArguments(from: arguments)
+        normalizeGraphicsAPIArguments(arguments: &arguments)
         return arguments
     }
 
@@ -181,6 +445,10 @@ extension Program {
         where !arguments.contains(where: { $0.caseInsensitiveCompare(argument) == .orderedSame }) {
             arguments.append(argument)
         }
+    }
+
+    private func removeArgument(arguments: inout [String], argumentToRemove: String) {
+        arguments.removeAll { $0.caseInsensitiveCompare(argumentToRemove) == .orderedSame }
     }
 
     private func shouldRunSteamPostBootstrapPass(from arguments: [String]) -> Bool {
@@ -197,51 +465,70 @@ extension Program {
         VectorWineInstaller.steamCompatibilityWineBinary() != nil
     }
 
+    private var isSteamCompatRuntimeActiveForLaunch: Bool {
+        guard isSteamProgram else {
+            return false
+        }
+        guard isUsingSteamCompatibilityRuntime else {
+            return false
+        }
+
+        switch bottle.settings.runtimeSelection {
+        case .compatibility:
+            return true
+        case .auto:
+            return !VectorWineInstaller.isCrossOverBottleURL(bottle.url)
+        case .bundled:
+            // Even when bundled is selected, Steam UI launches are promoted to
+            // compatibility runtime to avoid older bundled-runtime CEF breakage.
+            return !steamSettingsLaunchesApp()
+        case .crossover, .custom:
+            return false
+        }
+    }
+
     private func steamLaunchArguments() -> [String] {
-        if UserDefaults.standard.bool(forKey: Self.steamDisableSafeFlagsDefaultsKey) {
+        guard bottle.settings.steamUseSafeLaunchFlags else {
+            return []
+        }
+
+        // On compatibility runtime, forced legacy CEF flags can destabilize
+        // modern Steam UI startup (blank/no window). Keep launch args lean.
+        if isSteamCompatRuntimeActiveForLaunch {
+            if bottle.settings.steamForceNoBrowser {
+                return ["-no-browser"]
+            }
             return []
         }
 
         var arguments = Self.steamSafeLaunchArguments
-        if isSteamLegacyCompatModeEnabled()
-            || UserDefaults.standard.bool(forKey: Self.steamUseLegacyExtraFlagsDefaultsKey) {
+        if bottle.settings.steamUseLegacyExtraFlags && shouldApplySteamLegacyBootstrap() {
             arguments.append(contentsOf: Self.steamLegacyExtraLaunchArguments)
         }
-        if isSteamLegacyCompatModeEnabled() || UserDefaults.standard.bool(forKey: Self.steamForceNoBrowserDefaultsKey) {
+        if bottle.settings.steamForceNoBrowser {
             arguments.append("-no-browser")
         }
         return arguments
     }
 
     private func shouldApplySteamLegacyBootstrap() -> Bool {
-        if isSteamLegacyCompatModeEnabled() {
-            return true
-        }
-
-        guard !isUsingSteamCompatibilityRuntime else {
+        guard !isSteamCompatRuntimeActiveForLaunch else {
             return false
         }
 
-        return UserDefaults.standard.bool(forKey: Self.steamUseLegacyBootstrapDefaultsKey)
-    }
-
-    private func isSteamLegacyCompatModeEnabled() -> Bool {
-        let defaults = UserDefaults.standard
-        if defaults.object(forKey: Self.steamLegacyCompatDefaultsKey) == nil {
-            return true
-        }
-
-        return defaults.bool(forKey: Self.steamLegacyCompatDefaultsKey)
+        return bottle.settings.steamUseLegacyBootstrap
     }
 
     private func steamBootstrapCompatibilityArguments() -> [String] {
+        let archiveURL = steamPackageArchiveURL()
+
         guard let markerURL = steamBootstrapMarkerURL() else {
-            return Self.steamPinnedBootstrapArguments
+            return Self.steamPinnedBootstrapArgumentPrefix + ["-overridepackageurl", archiveURL]
         }
 
         let markerPath = markerURL.path(percentEncoded: false)
         if FileManager.default.fileExists(atPath: markerPath) {
-            return Self.steamPinnedBootstrapArguments
+            return Self.steamPinnedBootstrapArgumentPrefix + ["-overridepackageurl", archiveURL]
         }
 
         let created = FileManager.default.createFile(atPath: markerPath, contents: Data())
@@ -249,7 +536,7 @@ extension Program {
             Logger.wineKit.warning("Failed to create Steam bootstrap marker at \(markerPath, privacy: .public)")
         }
 
-        return Self.steamBootstrapArguments
+        return Self.steamBootstrapArgumentPrefix + ["-overridepackageurl", archiveURL]
     }
 
     private func steamBootstrapMarkerURL() -> URL? {
@@ -270,6 +557,10 @@ extension Program {
     }
 
     private func resetSteamHTMLCacheIfNeeded() {
+        guard bottle.settings.steamResetHTMLCacheOnLaunch else {
+            return
+        }
+
         guard let markerURL = steamHTMLCacheResetMarkerURL() else {
             return
         }
@@ -325,25 +616,6 @@ extension Program {
         }
     }
 
-    private func sanitizeSteamEnvironment(
-        _ environment: inout [String: String],
-        usingCompatibilityRuntime: Bool
-    ) {
-        if usingCompatibilityRuntime {
-            // Preserve bottle graphics env so game processes launched by Steam keep DXVK/D3D11 support.
-            return
-        }
-
-        environment["LC_ALL"] = "C"
-        environment["LANG"] = "C"
-        environment.removeValue(forKey: "LANGUAGE")
-        environment["DXVK_ASYNC"] = "0"
-        environment["DXVK_HUD"] = "0"
-        environment["DXVK_LOG_LEVEL"] = "none"
-        environment["WINEDLLOVERRIDES"] = ""
-        environment["ROSETTA_ADVERTISE_AVX"] = "0"
-    }
-
     private func injectSteamCompatibilityWineOverride(_ environment: inout [String: String]) {
         guard let wineBinary = VectorWineInstaller.steamCompatibilityWineBinary(),
               let wineserverBinary = VectorWineInstaller.steamCompatibilityWineserverBinary() else {
@@ -355,6 +627,15 @@ extension Program {
     }
 
     private func runSteamInWine(arguments: [String], environment: [String: String]) async throws {
+        await clearSteamWebHelperBuiltinsIfNeeded(environment: environment)
+        await ensureGlobalMediaPlaybackDefaults(environment: environment)
+        await ensureHighOnLife2AppDefaults(environment: environment)
+        await ensureParcelSimulatorAppDefaults(environment: environment)
+        await ensureMinecraftDungeonsAppDefaults(environment: environment)
+        await ensureContentWarningAppDefaults(environment: environment)
+        await ensureOriginAppDefaults(environment: environment)
+        await ensureTitanfall2AppDefaults(environment: environment)
+        await ensureSilentHillFAppDefaults(environment: environment)
         try await resetSteamWineserver(environment: environment)
         var launchStatus = try await Wine.runProgramDirectWithTerminationStatus(
             at: self.url,
@@ -396,5 +677,5 @@ extension Program {
             environment: environment
         )
     }
-
 }
+// swiftlint:enable file_length

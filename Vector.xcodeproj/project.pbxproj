@@ -13,6 +13,7 @@
 		63FFDE862ADF0C7700178665 /* BottomBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63FFDE852ADF0C7700178665 /* BottomBar.swift */; };
 		6763D8F62BC6314100651D27 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6763D8F52BC6314100651D27 /* Constants.swift */; };
 		67D278512BC5907E006F9A1E /* ActionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67D278502BC5907E006F9A1E /* ActionView.swift */; };
+		04FEE8FB7C883550F68BD0EF /* Shimmer in Frameworks */ = {isa = PBXBuildFile; productRef = 4878665F1845657A7E2056D9 /* Shimmer */; };
 		6E064B1229DD32A200D9A2D2 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 6E064B1129DD32A200D9A2D2 /* Sparkle */; };
 		6E064B1429DD331F00D9A2D2 /* SparkleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E064B1329DD331F00D9A2D2 /* SparkleView.swift */; };
 		6E17B6462AF3FDC100831173 /* PinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E17B6452AF3FDC100831173 /* PinView.swift */; };
@@ -57,6 +58,11 @@
 		8C2AEFCA2AED79CD00CB568F /* VectorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8C2AEFC92AED79CD00CB568F /* VectorKit */; };
 		8C73E1342AF472FC00B6FB45 /* ProgramMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C73E1332AF472FC00B6FB45 /* ProgramMenuView.swift */; };
 		8CB681E72AED7CD00018D319 /* VectorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8C2AEFC92AED79CD00CB568F /* VectorKit */; };
+		19C1CB46C7E9A71580644BA9 /* WhatsNewKit in Frameworks */ = {isa = PBXBuildFile; productRef = D9C3D18EABB177EE5A1E18A1 /* WhatsNewKit */; };
+		853AFA10398D70D9D3DED8DA /* Glur in Frameworks */ = {isa = PBXBuildFile; productRef = B4F6A5F055401387D6A47C19 /* Glur */; };
+		870E6CA41F4C4946A523A0C2 /* DockProgress in Frameworks */ = {isa = PBXBuildFile; productRef = EB6953DE097FD25C53723E43 /* DockProgress */; };
+		90EED9BF277C4AC8A2529B3B /* ColorfulX in Frameworks */ = {isa = PBXBuildFile; productRef = 34FF7A433030B23DFF95EDA5 /* ColorfulX */; };
+		A6BF97F8DF437A9618B24D67 /* SwiftyJSON in Frameworks */ = {isa = PBXBuildFile; productRef = D20A0D611F360CADA9C33CE0 /* SwiftyJSON */; };
 		AB0BCABD2B61036E00E21C31 /* RunningProcessesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0BCABC2B61036E00E21C31 /* RunningProcessesView.swift */; };
 		DB696FC82AFAE5DA0037EB2F /* PinCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB696FC72AFAE5DA0037EB2F /* PinCreationView.swift */; };
 		EB58FB552A499896002DC184 /* SemanticVersion in Frameworks */ = {isa = PBXBuildFile; productRef = EB58FB542A499896002DC184 /* SemanticVersion */; };
@@ -162,16 +168,22 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		6E40494F29CCA19C006E3F1B /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				8C2AEFC82AED79B700CB568F /* VectorKit in Frameworks */,
-				6E064B1229DD32A200D9A2D2 /* Sparkle in Frameworks */,
-				EB58FB552A499896002DC184 /* SemanticVersion in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+			6E40494F29CCA19C006E3F1B /* Frameworks */ = {
+				isa = PBXFrameworksBuildPhase;
+				buildActionMask = 2147483647;
+				files = (
+					8C2AEFC82AED79B700CB568F /* VectorKit in Frameworks */,
+					853AFA10398D70D9D3DED8DA /* Glur in Frameworks */,
+					90EED9BF277C4AC8A2529B3B /* ColorfulX in Frameworks */,
+					A6BF97F8DF437A9618B24D67 /* SwiftyJSON in Frameworks */,
+					19C1CB46C7E9A71580644BA9 /* WhatsNewKit in Frameworks */,
+					870E6CA41F4C4946A523A0C2 /* DockProgress in Frameworks */,
+					04FEE8FB7C883550F68BD0EF /* Shimmer in Frameworks */,
+					6E064B1229DD32A200D9A2D2 /* Sparkle in Frameworks */,
+					EB58FB552A499896002DC184 /* SemanticVersion in Frameworks */,
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+			};
 		6E70A4952A9A2197007799E9 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -394,7 +406,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		6E40495129CCA19C006E3F1B /* Vector */ = {
+			6E40495129CCA19C006E3F1B /* Vector */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 6E40497729CCA19D006E3F1B /* Build configuration list for PBXNativeTarget "Vector" */;
 			buildPhases = (
@@ -411,11 +423,17 @@
 				6EFDF6552AAE2DA800EF622F /* PBXTargetDependency */,
 			);
 			name = Vector;
-			packageProductDependencies = (
-				6E064B1129DD32A200D9A2D2 /* Sparkle */,
-				EB58FB542A499896002DC184 /* SemanticVersion */,
-				8C2AEFC92AED79CD00CB568F /* VectorKit */,
-			);
+				packageProductDependencies = (
+					6E064B1129DD32A200D9A2D2 /* Sparkle */,
+					4878665F1845657A7E2056D9 /* Shimmer */,
+					EB6953DE097FD25C53723E43 /* DockProgress */,
+					D9C3D18EABB177EE5A1E18A1 /* WhatsNewKit */,
+					B4F6A5F055401387D6A47C19 /* Glur */,
+					34FF7A433030B23DFF95EDA5 /* ColorfulX */,
+					D20A0D611F360CADA9C33CE0 /* SwiftyJSON */,
+					EB58FB542A499896002DC184 /* SemanticVersion */,
+					8C2AEFC92AED79CD00CB568F /* VectorKit */,
+				);
 			productName = Vector;
 			productReference = 6E40495229CCA19C006E3F1B /* Vector.app */;
 			productType = "com.apple.product-type.application";
@@ -515,14 +533,20 @@
 				ar,
 			);
 			mainGroup = 6E40494929CCA19C006E3F1B;
-			packageReferences = (
-				6E064B1029DD32A200D9A2D2 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				EB58FB532A499896002DC184 /* XCRemoteSwiftPackageReference "SemanticVersion" */,
-				6E5967682A9A421800D64F70 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
-				6E95F66E2AB3F33C00D585D1 /* XCRemoteSwiftPackageReference "SwiftyTextTable" */,
-				6E95F6712AB3F67200D585D1 /* XCRemoteSwiftPackageReference "Progress" */,
-				8C2AEFC62AED79B700CB568F /* XCLocalSwiftPackageReference "VectorKit" */,
-			);
+				packageReferences = (
+					6E064B1029DD32A200D9A2D2 /* XCRemoteSwiftPackageReference "Sparkle" */,
+					2CA2032389D52279DA354558 /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */,
+					F178700D9DCB8EC3B2A4290E /* XCRemoteSwiftPackageReference "DockProgress" */,
+					0852C42BF96C71B250CFF35C /* XCRemoteSwiftPackageReference "WhatsNewKit" */,
+					2175A0A3A032636C514A8522 /* XCRemoteSwiftPackageReference "Glur" */,
+					DEF26F1867E27FB11073B7BA /* XCRemoteSwiftPackageReference "ColorfulX" */,
+					DB4491E2433D3FF1F409E668 /* XCRemoteSwiftPackageReference "SwiftyJSON" */,
+					EB58FB532A499896002DC184 /* XCRemoteSwiftPackageReference "SemanticVersion" */,
+					6E5967682A9A421800D64F70 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
+					6E95F66E2AB3F33C00D585D1 /* XCRemoteSwiftPackageReference "SwiftyTextTable" */,
+					6E95F6712AB3F67200D585D1 /* XCRemoteSwiftPackageReference "Progress" */,
+					8C2AEFC62AED79B700CB568F /* XCLocalSwiftPackageReference "VectorKit" */,
+				);
 			productRefGroup = 6E40495329CCA19C006E3F1B /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -1020,7 +1044,31 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
+	/* Begin XCRemoteSwiftPackageReference section */
+		0852C42BF96C71B250CFF35C /* XCRemoteSwiftPackageReference "WhatsNewKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SvenTiigi/WhatsNewKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.2.1;
+			};
+		};
+		2175A0A3A032636C514A8522 /* XCRemoteSwiftPackageReference "Glur" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/joogps/Glur.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.0;
+			};
+		};
+		2CA2032389D52279DA354558 /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/markiv/SwiftUI-Shimmer.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.1;
+			};
+		};
 		6E064B1029DD32A200D9A2D2 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -1053,6 +1101,22 @@
 				minimumVersion = 0.4.0;
 			};
 		};
+		DB4491E2433D3FF1F409E668 /* XCRemoteSwiftPackageReference "SwiftyJSON" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SwiftyJSON/SwiftyJSON.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.2;
+			};
+		};
+		DEF26F1867E27FB11073B7BA /* XCRemoteSwiftPackageReference "ColorfulX" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Lakr233/ColorfulX.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.1.0;
+			};
+		};
 		EB58FB532A499896002DC184 /* XCRemoteSwiftPackageReference "SemanticVersion" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/SwiftPackageIndex/SemanticVersion";
@@ -1061,9 +1125,27 @@
 				minimumVersion = 0.5.1;
 			};
 		};
-/* End XCRemoteSwiftPackageReference section */
+		F178700D9DCB8EC3B2A4290E /* XCRemoteSwiftPackageReference "DockProgress" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/DockProgress.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.1.0;
+			};
+		};
+	/* End XCRemoteSwiftPackageReference section */
 
-/* Begin XCSwiftPackageProductDependency section */
+	/* Begin XCSwiftPackageProductDependency section */
+		34FF7A433030B23DFF95EDA5 /* ColorfulX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DEF26F1867E27FB11073B7BA /* XCRemoteSwiftPackageReference "ColorfulX" */;
+			productName = ColorfulX;
+		};
+		4878665F1845657A7E2056D9 /* Shimmer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2CA2032389D52279DA354558 /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */;
+			productName = Shimmer;
+		};
 		6E064B1129DD32A200D9A2D2 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 6E064B1029DD32A200D9A2D2 /* XCRemoteSwiftPackageReference "Sparkle" */;
@@ -1094,12 +1176,32 @@
 			package = 8C2AEFC62AED79B700CB568F /* XCLocalSwiftPackageReference "VectorKit" */;
 			productName = VectorKit;
 		};
+		B4F6A5F055401387D6A47C19 /* Glur */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2175A0A3A032636C514A8522 /* XCRemoteSwiftPackageReference "Glur" */;
+			productName = Glur;
+		};
+		D20A0D611F360CADA9C33CE0 /* SwiftyJSON */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DB4491E2433D3FF1F409E668 /* XCRemoteSwiftPackageReference "SwiftyJSON" */;
+			productName = SwiftyJSON;
+		};
+		D9C3D18EABB177EE5A1E18A1 /* WhatsNewKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0852C42BF96C71B250CFF35C /* XCRemoteSwiftPackageReference "WhatsNewKit" */;
+			productName = WhatsNewKit;
+		};
 		EB58FB542A499896002DC184 /* SemanticVersion */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = EB58FB532A499896002DC184 /* XCRemoteSwiftPackageReference "SemanticVersion" */;
 			productName = SemanticVersion;
 		};
-/* End XCSwiftPackageProductDependency section */
+		EB6953DE097FD25C53723E43 /* DockProgress */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F178700D9DCB8EC3B2A4290E /* XCRemoteSwiftPackageReference "DockProgress" */;
+			productName = DockProgress;
+		};
+	/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6E40494A29CCA19C006E3F1B /* Project object */;
 }

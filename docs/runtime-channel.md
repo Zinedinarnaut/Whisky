@@ -35,13 +35,15 @@ Minimum inputs:
 The workflow will:
 
 1. Download and hash the archive
-2. Generate and sign `runtime/Wine/manifest.json`
-3. Update `runtime/Wine/VectorWineVersion.plist`
-4. Commit metadata back to `main`
+2. Validate required runtime tools in the archive (`scripts/runtime/validate_runtime_archive.sh`)
+3. Generate and sign `runtime/Wine/manifest.json`
+4. Update `runtime/Wine/VectorWineVersion.plist`
+5. Commit metadata back to `main`
 
 Optional:
 
 - Set `publish_release=true` to also upload `Libraries.tar.gz`, plist, and manifest to a release tag `runtime-v<version>`.
+- Use `require_nt_memory_bridge=true` (default) to enforce `Wine/bin/vectorvmctl` presence in archive.
 
 ## Local Overrides
 
@@ -52,3 +54,61 @@ export VECTOR_RUNTIME_BASE_URL="https://raw.githubusercontent.com/Zinedinarnaut/
 # Persist for app launches
 defaults write com.isaacmarovitz.Vector vectorWineRuntimeBaseURL -string "https://raw.githubusercontent.com/Zinedinarnaut/Vector/main/runtime/Wine"
 ```
+
+## CrossOver Source Integration
+
+If you want to port CrossOver Wine deltas into our own Wine tree, use:
+
+- `scripts/runtime/generate_crossover_patchset.sh`
+- `scripts/runtime/apply_patchset.sh`
+
+Full workflow:
+
+- `docs/crossover-patch-pipeline.md`
+
+## Vector Runtime Patchsets
+
+To apply Vector-owned runtime patchsets (including NT memory bridge) before building your runtime archive:
+
+```bash
+scripts/runtime/apply_vector_runtime_patchsets.sh \
+  --wine-source /path/to/wine/source \
+  --dry-run
+```
+
+Then apply for real:
+
+```bash
+scripts/runtime/apply_vector_runtime_patchsets.sh \
+  --wine-source /path/to/wine/source
+```
+
+On Apple Silicon, Wine runtime builds need a PE cross-compilation toolchain.
+Homebrew `llvm` provides `clang`, `lld`, and `llvm-dlltool`, but Wine also
+needs the MinGW/PE runtime libraries. If configure fails with:
+
+```text
+PE cross-compilation is required for ARM64
+```
+
+install or provide an `llvm-mingw` toolchain and put its `bin` directory ahead
+of `/usr/bin` before configuring Wine. Also put Homebrew bison ahead of
+Apple's legacy `/usr/bin/bison`:
+
+```bash
+export PATH="/path/to/llvm-mingw/bin:/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/bison/bin:$PATH"
+```
+
+The runtime archive should only be published after `Wine/bin/vectorvmctl` is
+present and `scripts/runtime/validate_runtime_archive.sh` passes.
+
+## Proton-style compatibility catalogs
+
+Patchsets whose directory name does not start with `vector-*` are treated as
+catalogs unless explicitly promoted. For example,
+`runtime/Wine/patchsets/proton-style-media` tracks upstream Proton/Wine-GE
+patches and dispatch rules, but its source patches are stored under
+`upstream-patches/` and are not applied by `apply_vector_runtime_patchsets.sh`.
+
+Promote only the specific patches that dry-run cleanly against the active
+VectorKit Wine source tree.

@@ -49,6 +49,11 @@ struct RunningProcessesView: View {
                                 await fetchProcesses()
                             }
                         }
+                        Button("Kill All") {
+                            Task.detached(priority: .userInitiated) {
+                                await killAllProcesses()
+                            }
+                        }
                         Button("process.table.kill") {
                             Task.detached(priority: .userInitiated) {
                                 await killProcess()
@@ -109,5 +114,15 @@ struct RunningProcessesView: View {
             }
             await fetchProcesses()
         }
+    }
+
+    func killAllProcesses() async {
+        do {
+            try Wine.killBottle(bottle: bottle)
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+        } catch {
+            print("Error killing all bottle processes: \(error)")
+        }
+        await fetchProcesses()
     }
 }

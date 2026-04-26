@@ -157,12 +157,28 @@ public struct BottleSettings: Codable, Equatable {
     private var wineConfig: BottleWineConfig
     private var metalConfig: BottleMetalConfig
     private var dxvkConfig: BottleDXVKConfig
+    var runtimeConfig: BottleRuntimeConfig
+    var steamConfig: BottleSteamConfig
+    var compatibilityConfig: BottleCompatibilityConfig
+    var diagnosticsConfig: BottleLogProfile
+    var performanceConfig: BottlePerformanceConfig
+    var gamingConfig: BottleGamingConfig
+    var dispatchConfig: BottleDispatchConfig
+    var profiles: [BottleGameProfile]
 
     public init() {
         self.info = BottleInfo()
         self.wineConfig = BottleWineConfig()
         self.metalConfig = BottleMetalConfig()
         self.dxvkConfig = BottleDXVKConfig()
+        self.runtimeConfig = BottleRuntimeConfig()
+        self.steamConfig = BottleSteamConfig()
+        self.compatibilityConfig = BottleCompatibilityConfig()
+        self.diagnosticsConfig = .quiet
+        self.performanceConfig = BottlePerformanceConfig()
+        self.gamingConfig = BottleGamingConfig()
+        self.dispatchConfig = BottleDispatchConfig()
+        self.profiles = []
     }
 
     // swiftlint:disable line_length
@@ -173,6 +189,20 @@ public struct BottleSettings: Codable, Equatable {
         self.wineConfig = try container.decodeIfPresent(BottleWineConfig.self, forKey: .wineConfig) ?? BottleWineConfig()
         self.metalConfig = try container.decodeIfPresent(BottleMetalConfig.self, forKey: .metalConfig) ?? BottleMetalConfig()
         self.dxvkConfig = try container.decodeIfPresent(BottleDXVKConfig.self, forKey: .dxvkConfig) ?? BottleDXVKConfig()
+        self.runtimeConfig = try container.decodeIfPresent(BottleRuntimeConfig.self, forKey: .runtimeConfig)
+            ?? BottleRuntimeConfig()
+        self.steamConfig = try container.decodeIfPresent(BottleSteamConfig.self, forKey: .steamConfig)
+            ?? BottleSteamConfig()
+        self.compatibilityConfig = try container.decodeIfPresent(BottleCompatibilityConfig.self, forKey: .compatibilityConfig)
+            ?? BottleCompatibilityConfig()
+        self.diagnosticsConfig = try container.decodeIfPresent(BottleLogProfile.self, forKey: .diagnosticsConfig) ?? .quiet
+        self.performanceConfig = try container.decodeIfPresent(BottlePerformanceConfig.self, forKey: .performanceConfig)
+            ?? BottlePerformanceConfig()
+        self.gamingConfig = try container.decodeIfPresent(BottleGamingConfig.self, forKey: .gamingConfig)
+            ?? BottleGamingConfig()
+        self.dispatchConfig = try container.decodeIfPresent(BottleDispatchConfig.self, forKey: .dispatchConfig)
+            ?? BottleDispatchConfig()
+        self.profiles = try container.decodeIfPresent([BottleGameProfile].self, forKey: .profiles) ?? []
     }
     // swiftlint:enable line_length
 
@@ -281,7 +311,8 @@ public struct BottleSettings: Codable, Equatable {
 
     // swiftlint:disable:next cyclomatic_complexity
     public func environmentVariables(wineEnv: inout [String: String]) {
-        if dxvk {
+        let effectiveDXVKEnabled = shouldEnableDXVK()
+        if effectiveDXVKEnabled {
             wineEnv.updateValue("dxgi,d3d9,d3d10core,d3d11=n,b", forKey: "WINEDLLOVERRIDES")
             switch dxvkHud {
             case .full:
@@ -295,6 +326,15 @@ public struct BottleSettings: Codable, Equatable {
             }
             if dxvkAsync {
                 wineEnv.updateValue("1", forKey: "DXVK_ASYNC")
+            }
+        } else {
+            wineEnv.removeValue(forKey: "DXVK_ASYNC")
+            wineEnv.removeValue(forKey: "DXVK_HUD")
+            if graphicsBackendMode == .wined3d {
+                wineEnv.updateValue("dxgi,d3d9,d3d10core,d3d11=b", forKey: "WINEDLLOVERRIDES")
+            } else if graphicsBackendMode == .dxmt {
+                // Prefer builtin DLL routing for DXMT-capable runtimes that bundle/replace D3D10/11 in Wine itself.
+                wineEnv.updateValue("dxgi,d3d10core,d3d11=b", forKey: "WINEDLLOVERRIDES")
             }
         }
 
@@ -326,5 +366,79 @@ public struct BottleSettings: Codable, Equatable {
         if dxrEnabled {
             wineEnv.updateValue("1", forKey: "D3DM_SUPPORT_DXR")
         }
+
+        if forceD3D11Compatibility {
+            let existingOverrides = wineEnv["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if dllOverridesPolicy == .custom, !existingOverrides.isEmpty {
+                wineEnv.updateValue("dxgi,d3d11=n,b;\(existingOverrides)", forKey: "WINEDLLOVERRIDES")
+            } else {
+                wineEnv.updateValue("dxgi,d3d11=n,b;nvapi,nvapi64=d", forKey: "WINEDLLOVERRIDES")
+            }
+        }
+
+        switch dllOverridesPolicy {
+        case .auto:
+            break
+        case .disableNvapi:
+            appendDLLOverride(&wineEnv, override: "nvapi,nvapi64=d")
+        case .custom:
+            let customOverrides = customDLLOverrides.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !customOverrides.isEmpty {
+                wineEnv.updateValue(customOverrides, forKey: "WINEDLLOVERRIDES")
+            }
+        }
+
+        switch logProfile {
+        case .quiet:
+            wineEnv.updateValue("-all", forKey: "WINEDEBUG")
+        case .debug:
+            wineEnv.updateValue("warn+all,fixme-all", forKey: "WINEDEBUG")
+        case .deepDebug:
+            wineEnv.updateValue("+all", forKey: "WINEDEBUG")
+        }
+
+        if frameRateLimit > 0 {
+            wineEnv.updateValue(String(frameRateLimit), forKey: "DXVK_FRAME_RATE")
+        } else {
+            wineEnv.removeValue(forKey: "DXVK_FRAME_RATE")
+        }
+
+        wineEnv.updateValue(vsyncEnabled ? "1" : "0", forKey: "DXVK_SYNC_INTERVAL")
+        if fsrEnabled {
+            wineEnv.updateValue("1", forKey: "WINE_FULLSCREEN_FSR")
+            wineEnv.updateValue(String(format: "%.2f", fsrSharpness), forKey: "WINE_FULLSCREEN_FSR_STRENGTH")
+        } else {
+            wineEnv.removeValue(forKey: "WINE_FULLSCREEN_FSR")
+            wineEnv.removeValue(forKey: "WINE_FULLSCREEN_FSR_STRENGTH")
+        }
+    }
+
+    private func shouldEnableDXVK() -> Bool {
+        if forceD3D11Compatibility {
+            return true
+        }
+
+        switch graphicsBackendMode {
+        case .auto:
+            return dxvk
+        case .dxvk:
+            return true
+        case .dxmt, .wined3d, .d3dMetal:
+            return false
+        }
+    }
+
+    private func appendDLLOverride(_ environment: inout [String: String], override: String) {
+        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if current.isEmpty {
+            environment["WINEDLLOVERRIDES"] = override
+            return
+        }
+
+        if current.localizedCaseInsensitiveContains(override) {
+            return
+        }
+
+        environment["WINEDLLOVERRIDES"] = "\(current);\(override)"
     }
 }
