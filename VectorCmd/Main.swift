@@ -26,7 +26,7 @@ import SemanticVersion
 import ArgumentParser
 
 @main
-struct Vector: ParsableCommand {
+struct Vector: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "A CLI interface for Vector.",
         subcommands: [List.self,
@@ -555,11 +555,11 @@ private extension VectorMemory {
     }
 }
 
-struct VectorSecurity: ParsableCommand {
+struct VectorSecurity: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "security",
         abstract: "Protected multiplayer and studio-review tooling.",
-        subcommands: [Host.self, Export.self]
+        subcommands: [Host.self, Doctor.self, Export.self]
     )
 
     struct Host: ParsableCommand {
@@ -595,6 +595,25 @@ struct VectorSecurity: ParsableCommand {
             let data = try encoder.encode(bundle)
             guard let output = String(data: data, encoding: .utf8) else {
                 throw ValidationError("Failed to encode security export.")
+            }
+            print(output)
+        }
+    }
+
+    struct Doctor: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Export a full Vector Doctor diagnostics bundle as JSON."
+        )
+
+        @Argument var bottleName: String
+        @Flag(name: .long, help: "Skip remote VecPatch refresh and use local/cache state only.")
+        var offline = false
+
+        mutating func run() async throws {
+            let bottle = try VectorMemory.loadBottle(named: bottleName)
+            let data = try await VectorDoctor.encodedReport(for: bottle, checkRemote: !offline)
+            guard let output = String(data: data, encoding: .utf8) else {
+                throw ValidationError("Failed to encode Vector Doctor export.")
             }
             print(output)
         }

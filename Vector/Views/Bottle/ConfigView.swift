@@ -49,6 +49,9 @@ struct ConfigView: View {
     @State private var launchDoctorLoading: Bool = false
     @State private var launchDoctorReport: LaunchDoctorReport?
     @State private var launchDoctorStatusMessage: String = ""
+    @State private var vectorDoctorLoading: Bool = false
+    @State private var vectorDoctorReport: VectorDoctorReport?
+    @State private var vectorDoctorStatusMessage: String = ""
     @State private var missingDependencyFixes: [MissingDependencyFix] = []
     @State private var environmentRepairInFlight: Bool = false
     @State private var dlssHealthModalPresented: Bool = false
@@ -62,6 +65,7 @@ struct ConfigView: View {
     @AppStorage("steamSectionExpanded") private var steamSectionExpanded: Bool = false
     @AppStorage("compatSectionExpanded") private var compatSectionExpanded: Bool = false
     @AppStorage("launchDoctorSectionExpanded") private var launchDoctorSectionExpanded: Bool = false
+    @AppStorage("vectorDoctorSectionExpanded") private var vectorDoctorSectionExpanded: Bool = false
     @AppStorage("gamingSectionExpanded") private var gamingSectionExpanded: Bool = false
     @AppStorage("perfSectionExpanded") private var perfSectionExpanded: Bool = false
     @AppStorage("profilesSectionExpanded") private var profilesSectionExpanded: Bool = false
@@ -514,6 +518,57 @@ struct ConfigView: View {
                     }
                 }
             }
+            Section("Vector Doctor", isExpanded: $vectorDoctorSectionExpanded) {
+                Text("Runs host, runtime, bridge, VecPatch, protected-title, and recent-log checks.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("Run Vector Doctor") {
+                        runVectorDoctor()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vectorDoctorLoading)
+
+                    Button("Export Diagnostic Bundle") {
+                        exportVectorDoctorReport()
+                    }
+                    .disabled(vectorDoctorLoading)
+                }
+
+                if vectorDoctorLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                if !vectorDoctorStatusMessage.isEmpty {
+                    Text(vectorDoctorStatusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let report = vectorDoctorReport {
+                    ForEach(report.checks) { check in
+                        vectorDoctorCheckRow(check)
+                    }
+
+                    Divider()
+                    HStack {
+                        Text("VecPatch")
+                        Spacer()
+                        Text(report.dispatch.message)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    HStack {
+                        Text("Memory Bridge")
+                        Spacer()
+                        Text(report.memoryBridge.message)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
             Section("Gaming & Patch Dispatch", isExpanded: $gamingSectionExpanded) {
                 Toggle("Enable gaming bottle mode", isOn: $bottle.settings.gamingModeEnabled)
                     .help("Turns on gaming-focused defaults and enables launcher/patch automation options.")
@@ -766,6 +821,7 @@ struct ConfigView: View {
         .animation(.vectorDefault, value: steamSectionExpanded)
         .animation(.vectorDefault, value: compatSectionExpanded)
         .animation(.vectorDefault, value: launchDoctorSectionExpanded)
+        .animation(.vectorDefault, value: vectorDoctorSectionExpanded)
         .animation(.vectorDefault, value: gamingSectionExpanded)
         .animation(.vectorDefault, value: perfSectionExpanded)
         .animation(.vectorDefault, value: profilesSectionExpanded)
@@ -933,6 +989,66 @@ struct ConfigView: View {
         }
     }
 
+    private func runVectorDoctor() {
+        vectorDoctorLoading = true
+        vectorDoctorStatusMessage = "Running Vector Doctor..."
+
+        Task(priority: .userInitiated) {
+            let report = await VectorDoctor.report(for: bottle, checkRemote: true)
+            vectorDoctorReport = report
+            vectorDoctorLoading = false
+            vectorDoctorStatusMessage = vectorDoctorSummary(for: report)
+        }
+    }
+
+    private func exportVectorDoctorReport() {
+        vectorDoctorLoading = true
+        vectorDoctorStatusMessage = "Preparing diagnostic export..."
+
+        Task(priority: .userInitiated) {
+            do {
+                let data = try await VectorDoctor.encodedReport(for: bottle, checkRemote: true)
+                if let report = try? JSONDecoder().decode(VectorDoctorReport.self, from: data) {
+                    vectorDoctorReport = report
+                }
+                vectorDoctorLoading = false
+                presentVectorDoctorSavePanel(data: data)
+            } catch {
+                vectorDoctorLoading = false
+                vectorDoctorStatusMessage = "Failed to export diagnostics: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func presentVectorDoctorSavePanel(data: Data) {
+        let panel = NSSavePanel()
+        panel.title = "Export Vector Doctor Diagnostics"
+        panel.nameFieldStringValue = "\(bottle.settings.name)-vector-doctor.json"
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        panel.begin { result in
+            guard result == .OK, let url = panel.url else { return }
+            do {
+                try data.write(to: url, options: .atomic)
+                vectorDoctorStatusMessage = "Exported Vector Doctor diagnostics."
+            } catch {
+                vectorDoctorStatusMessage = "Failed to save diagnostics: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func vectorDoctorSummary(for report: VectorDoctorReport) -> String {
+        let blockerCount = report.checks.filter { $0.status == .blocked || $0.status == .failed }.count
+        let warningCount = report.checks.filter { $0.status == .warning }.count
+        if blockerCount > 0 {
+            return "Vector Doctor found \(blockerCount) blocker(s) and \(warningCount) warning(s)."
+        }
+        if warningCount > 0 {
+            return "Vector Doctor found \(warningCount) warning(s)."
+        }
+        return "Vector Doctor found no major blockers."
+    }
+
     private func applyLaunchDoctorFix(_ fix: LaunchDoctorFixID) {
         switch fix {
         case .switchToCompatibilityRuntime:
@@ -961,6 +1077,50 @@ struct ConfigView: View {
             bottle.settings.allowUnsupportedAntiCheatLaunches = false
             bottle.settings.antiCheatPreflightMode = .block
             snapshotMessage = "Launch Doctor: safe multiplayer mode enabled."
+        }
+    }
+
+    private func vectorDoctorCheckRow(_ check: VectorDoctorCheck) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: vectorDoctorSymbol(for: check.status))
+                .foregroundStyle(vectorDoctorColor(for: check.status))
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(check.title)
+                    .fontWeight(.semibold)
+                Text(check.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        }
+    }
+
+    private func vectorDoctorSymbol(for status: VectorDoctorCheckStatus) -> String {
+        switch status {
+        case .pass:
+            return "checkmark.circle.fill"
+        case .info:
+            return "info.circle"
+        case .warning:
+            return "exclamationmark.triangle.fill"
+        case .blocked:
+            return "lock.fill"
+        case .failed:
+            return "xmark.octagon.fill"
+        }
+    }
+
+    private func vectorDoctorColor(for status: VectorDoctorCheckStatus) -> Color {
+        switch status {
+        case .pass:
+            return .green
+        case .info:
+            return .secondary
+        case .warning:
+            return .orange
+        case .blocked, .failed:
+            return .red
         }
     }
 
