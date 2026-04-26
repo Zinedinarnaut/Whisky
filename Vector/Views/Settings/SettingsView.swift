@@ -17,6 +17,7 @@
 //
 
 import SwiftUI
+import UserNotifications
 import VectorKit
 
 struct SettingsView: View {
@@ -24,6 +25,13 @@ struct SettingsView: View {
     @AppStorage("killOnTerminate") var killOnTerminate = true
     @AppStorage("checkVectorWineUpdates") var checkVectorWineUpdates = true
     @AppStorage("defaultBottleLocation") var defaultBottleLocation = BottleData.defaultBottleDir
+    @AppStorage(VectorNotifications.notificationsEnabledDefaultsKey) var notificationsEnabled = true
+    @AppStorage("notificationsLaunchesEnabled") var notificationsLaunchesEnabled = true
+    @AppStorage("notificationsBottleLifecycleEnabled") var notificationsBottleLifecycleEnabled = true
+    @AppStorage("notificationsMaintenanceEnabled") var notificationsMaintenanceEnabled = true
+    @AppStorage("VectorDeveloperToolsEnabled") var developerToolsEnabled = false
+
+    @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
 
     var body: some View {
         Form {
@@ -51,10 +59,86 @@ struct SettingsView: View {
                 Toggle("settings.toggle.vector.updates", isOn: $vectorUpdate)
                 Toggle("settings.toggle.vectorwine.updates", isOn: $checkVectorWineUpdates)
             }
+
+            Section("Notifications") {
+                Toggle("Enable notifications", isOn: $notificationsEnabled)
+                Toggle("Launch notifications", isOn: $notificationsLaunchesEnabled)
+                    .disabled(!notificationsEnabled)
+                Toggle("Bottle lifecycle notifications", isOn: $notificationsBottleLifecycleEnabled)
+                    .disabled(!notificationsEnabled)
+                Toggle("Maintenance notifications", isOn: $notificationsMaintenanceEnabled)
+                    .disabled(!notificationsEnabled)
+
+                HStack {
+                    Text("Permission")
+                    Spacer()
+                    Text(notificationPermissionLabel)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Button("Request Permission") {
+                        Task {
+                            _ = await VectorNotifications.requestAuthorization()
+                            await refreshNotificationAuthorizationStatus()
+                        }
+                    }
+                    .disabled(
+                        notificationAuthorizationStatus == .authorized
+                            || notificationAuthorizationStatus == .provisional
+                    )
+
+                    Button("Send Test Notification") {
+                        VectorNotifications.sendTestNotification()
+                    }
+                    .disabled(!notificationsEnabled)
+                }
+            }
+
+#if DEBUG
+            Section("Developer") {
+                Toggle("Developer Mode", isOn: $developerToolsEnabled)
+                Text(
+                    "Enables Wine memory tooling for single-player/debug bottles only. "
+                        + "Protected multiplayer titles stay locked."
+                )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+#endif
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
         .frame(width: ViewWidth.medium)
+        .task {
+            await refreshNotificationAuthorizationStatus()
+        }
+        .onChange(of: notificationsEnabled) {
+            if notificationsEnabled {
+                Task {
+                    await refreshNotificationAuthorizationStatus()
+                }
+            }
+        }
+    }
+
+    private var notificationPermissionLabel: String {
+        switch notificationAuthorizationStatus {
+        case .notDetermined:
+            return "Not requested"
+        case .denied:
+            return "Denied"
+        case .authorized:
+            return "Allowed"
+        case .provisional:
+            return "Provisional"
+        @unknown default:
+            return "Unknown"
+        }
+    }
+
+    private func refreshNotificationAuthorizationStatus() async {
+        notificationAuthorizationStatus = await VectorNotifications.authorizationStatus()
     }
 }
 

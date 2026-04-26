@@ -19,6 +19,25 @@
 import SwiftUI
 import VectorKit
 
+private enum BottleCreationTemplate: String, CaseIterable, Identifiable {
+    case standard
+    case gaming
+    case windowsFidelity
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .standard:
+            return "Standard"
+        case .gaming:
+            return "Gaming"
+        case .windowsFidelity:
+            return "Windows Fidelity"
+        }
+    }
+}
+
 struct BottleCreationView: View {
     @Binding var newlyCreatedBottleURL: URL?
 
@@ -27,6 +46,12 @@ struct BottleCreationView: View {
     @State private var newBottleURL: URL = UserDefaults.standard.url(forKey: "defaultBottleLocation")
                                            ?? BottleData.defaultBottleDir
     @State private var nameValid: Bool = false
+    @State private var creationTemplate: BottleCreationTemplate = .standard
+    @State private var autoInstallLaunchers: Bool = true
+    @State private var autoPinLaunchers: Bool = true
+    @State private var autoApplyKnownPatches: Bool = true
+    @State private var enablePatchDispatch: Bool = true
+    @State private var patchDispatchEndpointURL: String = BottleDispatchConfig.defaultEndpointURL
 
     @Environment(\.dismiss) private var dismiss
 
@@ -42,6 +67,54 @@ struct BottleCreationView: View {
                     ForEach(WinVersion.allCases.reversed(), id: \.self) {
                         Text($0.pretty())
                     }
+                }
+
+                Picker("Bottle Profile", selection: $creationTemplate) {
+                    ForEach(BottleCreationTemplate.allCases) { template in
+                        Text(template.title).tag(template)
+                    }
+                }
+                .help(
+                    "Choose Standard for a basic bottle, Gaming for launcher + patch automation, "
+                    + "or Windows Fidelity for installer-safe defaults."
+                )
+
+                if creationTemplate == .gaming {
+                    Toggle("Auto-install launcher installers", isOn: $autoInstallLaunchers)
+                        .help(
+                            "Downloads Steam, Epic, Ubisoft Connect, and GOG installers "
+                            + "into the bottle and runs unattended install where available."
+                        )
+                    Toggle("Auto-pin launchers", isOn: $autoPinLaunchers)
+                        .help(
+                            "Pins detected launcher executables and downloaded installers "
+                            + "so they are immediately accessible."
+                        )
+                    Toggle("Auto-apply known game patches", isOn: $autoApplyKnownPatches)
+                        .help("Seeds this bottle with built-in compatibility profiles for supported games.")
+                    Toggle("Enable patch dispatch sync", isOn: $enablePatchDispatch)
+                        .help(
+                            "Fetches remote patch rules from the dispatch endpoint and "
+                            + "merges them into game profiles."
+                        )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Patch dispatch endpoint")
+                        TextField(BottleDispatchConfig.defaultEndpointURL, text: $patchDispatchEndpointURL)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.body, design: .monospaced))
+                            .disabled(!enablePatchDispatch)
+                    }
+                    .help("HTTPS endpoint that serves JSON patch rules for this bottle.")
+                }
+
+                if creationTemplate == .windowsFidelity {
+                    Text(
+                        "Windows Fidelity enables installer compatibility mode and "
+                        + "runtime DLL verify+repair defaults."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
                 ActionView(
@@ -88,9 +161,30 @@ struct BottleCreationView: View {
     }
 
     func submit() {
+        let options: BottleCreationOptions
+        if creationTemplate == .gaming {
+            options = BottleCreationOptions(
+                gamingModeEnabled: true,
+                windowsFidelityModeEnabled: false,
+                autoInstallLaunchers: autoInstallLaunchers,
+                autoPinLaunchers: autoPinLaunchers,
+                autoApplyKnownGamePatches: autoApplyKnownPatches,
+                enablePatchDispatch: enablePatchDispatch,
+                patchDispatchEndpointURL: patchDispatchEndpointURL,
+                installerCompatibilityMode: false,
+                preferredRuntimeDLLSyncMode: .verifyOnly,
+                preferCompatibilityRuntime: false
+            )
+        } else if creationTemplate == .windowsFidelity {
+            options = .windowsFidelity
+        } else {
+            options = .standard
+        }
+
         newlyCreatedBottleURL = BottleVM.shared.createNewBottle(bottleName: newBottleName,
                                                                 winVersion: newBottleVersion,
-                                                                bottleURL: newBottleURL)
+                                                                bottleURL: newBottleURL,
+                                                                options: options)
         dismiss()
     }
 }
