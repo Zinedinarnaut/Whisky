@@ -1,0 +1,59 @@
+# proton-style-media
+
+Version: Lutris Wine GE-Proton8-26
+Source: /tmp/vector-wine-ge-scan
+Generated: 2026-04-24T11:42:35Z
+
+These patches are cataloged, not auto-applied. Validate against VectorKit Wine before promotion.
+
+- 0001-patches-wine-hotfixes-staging-windows.networking.connectivity-new-dll-0001-include-Add-windows.networking.connectivity.idl.patch (400 lines, patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll)
+  - upstream: patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll/0001-include-Add-windows.networking.connectivity.idl.patch
+  - sha256: 7210500165986fdf28d53cc618ced00056d628c2828089f6bc427fd4341b85be
+- 0002-patches-wine-hotfixes-staging-windows.networking.connectivity-new-dll-0002-include-Add-windows.networking.idl.patch (120 lines, patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll)
+  - upstream: patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll/0002-include-Add-windows.networking.idl.patch
+  - sha256: b396de26e57061f1c1344f81726c18e50f6493decea38299416483c9107f2e39
+- 0003-patches-wine-hotfixes-staging-windows.networking.connectivity-new-dll-0003-windows.networking.connectivity-Add-stub-dll.patch (97 lines, patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll)
+  - upstream: patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll/0003-windows.networking.connectivity-Add-stub-dll.patch
+  - sha256: d0580db1432575cea70b338c87a325fc8d9caed175d1993076a9f8d709e70f2b
+- 0004-patches-wine-hotfixes-staging-windows.networking.connectivity-new-dll-0004-windows.networking.connectivity-Implement-IActivatio.patch (136 lines, patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll)
+  - upstream: patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll/0004-windows.networking.connectivity-Implement-IActivatio.patch
+  - sha256: 739d6796e91c111d58c53bfe12c9a035fde81a2cc3f25a8785e44d5b1eeaa0e5
+- 0005-patches-wine-hotfixes-staging-windows.networking.connectivity-new-dll-0005-windows.networking.connectivity-Implement-INetworkIn.patch (301 lines, patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll)
+  - upstream: patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll/0005-windows.networking.connectivity-Implement-INetworkIn.patch
+  - sha256: 202a4240d03142adf569938f53f0733e09f58b1b23d7efabce18502d56011645
+- 0006-patches-wine-hotfixes-staging-windows.networking.connectivity-new-dll-0006-windows.networking.connectivity-Registry-DLL.patch (79 lines, patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll)
+  - upstream: patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll/0006-windows.networking.connectivity-Registry-DLL.patch
+  - sha256: b77529e1ece6b0b2404ee6f7f1d20a6c7bf0281cd9ab360cb212062d99b40842
+- 0007-patches-wine-hotfixes-staging-windows.networking.connectivity-new-dll-0007-windows.networking.connectivity-Implement-INetworkIn.patch (198 lines, patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll)
+  - upstream: patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll/0007-windows.networking.connectivity-Implement-INetworkIn.patch
+  - sha256: 432d4b2f612fe21379605d27b5619e7638539494aa7bed3307f874baf7fc2a3e
+- 0008-patches-wine-hotfixes-staging-windows.networking.connectivity-new-dll-0008-windows.networking.connectivity-IConnectionProfile-G.patch (30 lines, patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll)
+  - upstream: patches/wine-hotfixes/staging/windows.networking.connectivity-new-dll/0008-windows.networking.connectivity-IConnectionProfile-G.patch
+  - sha256: 98a56841b1e25ba6b9532ef84066fc4624f75f3f8be90726f7a9f929384e0d3c
+- 0009-patches-wine-hotfixes-staging-wininet-Cleanup-0001-wininet-tests-Add-more-tests-for-cookies.patch (145 lines, patches/wine-hotfixes/staging/wininet-Cleanup)
+  - upstream: patches/wine-hotfixes/staging/wininet-Cleanup/0001-wininet-tests-Add-more-tests-for-cookies.patch
+  - sha256: be8e2c9264b1f2675c44bb730a9f51e686e164fc045282383d80c2edb0bc1c49
+- 0010-patches-wine-hotfixes-staging-wininet-Cleanup-0002-wininet-tests-Test-auth-credential-reusage-with-host.patch (130 lines, patches/wine-hotfixes/staging/wininet-Cleanup)
+  - upstream: patches/wine-hotfixes/staging/wininet-Cleanup/0002-wininet-tests-Test-auth-credential-reusage-with-host.patch
+  - sha256: e1bd7db8dbfbc3bf8e44eb79a492174cc6525e76a8278b18de300785c86438e5
+- 0011-patches-wine-hotfixes-staging-wininet-Cleanup-0003-wininet-tests-Check-cookie-behaviour-when-overriding.patch (132 lines, patches/wine-hotfixes/staging/wininet-Cleanup)
+  - upstream: patches/wine-hotfixes/staging/wininet-Cleanup/0003-wininet-tests-Check-cookie-behaviour-when-overriding.patch
+  - sha256: a12a2ec71778442f67c1f0c0bc40ea14eac511b408a7497cb081a4e70a3443ef
+- 0012-patches-wine-hotfixes-staging-wininet-Cleanup-0004-wininet-Strip-filename-if-no-path-is-set-in-cookie.patch (82 lines, patches/wine-hotfixes/staging/wininet-Cleanup)
+  - upstream: patches/wine-hotfixes/staging/wininet-Cleanup/0004-wininet-Strip-filename-if-no-path-is-set-in-cookie.patch
+  - sha256: 62af89e2294261d8018590f05b75d3959e976141705024daba8afa6b37474ff5
+- 0013-patches-wine-hotfixes-staging-wininet-Cleanup-0005-wininet-Replacing-header-fields-should-fail-if-they-.patch (250 lines, patches/wine-hotfixes/staging/wininet-Cleanup)
+  - upstream: patches/wine-hotfixes/staging/wininet-Cleanup/0005-wininet-Replacing-header-fields-should-fail-if-they-.patch
+  - sha256: 0ff81e35a25da1b71776c4bc3b09c7ed75f47c71ffdcacf93fa5885e915b8961
+- 0014-patches-wine-hotfixes-staging-d3dx11_43-D3DX11CreateTextureFromMemory-0001-d3dx11_43-Implement-D3DX11GetImageInfoFromMemory.patch (254 lines, patches/wine-hotfixes/staging/d3dx11_43-D3DX11CreateTextureFromMemory)
+  - upstream: patches/wine-hotfixes/staging/d3dx11_43-D3DX11CreateTextureFromMemory/0001-d3dx11_43-Implement-D3DX11GetImageInfoFromMemory.patch
+  - sha256: fbaeccd89f2733ce8a6863e3b0c9167154015729636a130ce1568cd09f9c4b81
+- 0015-patches-wine-hotfixes-staging-d3dx11_43-D3DX11CreateTextureFromMemory-0002-d3dx11_42-Implement-D3DX11CreateTextureFromMemory.patch (395 lines, patches/wine-hotfixes/staging/d3dx11_43-D3DX11CreateTextureFromMemory)
+  - upstream: patches/wine-hotfixes/staging/d3dx11_43-D3DX11CreateTextureFromMemory/0002-d3dx11_42-Implement-D3DX11CreateTextureFromMemory.patch
+  - sha256: 8979273e8be73cdca4557904e52c4591faff10e1c817b71a2131245d6e83c7af
+- 0016-patches-wine-hotfixes-staging-xactengine-initial-0001-x3daudio1_7-Create-import-library.patch (23 lines, patches/wine-hotfixes/staging/xactengine-initial)
+  - upstream: patches/wine-hotfixes/staging/xactengine-initial/0001-x3daudio1_7-Create-import-library.patch
+  - sha256: 1c249854253d4f014f4d9ff136f296110ab79430e3da1e77b43cafaeb6acc480
+- 0017-patches-game-patches-ffxiv_hydaelyn_intro_playback_fix.patch (18 lines, patches/game-patches)
+  - upstream: patches/game-patches/ffxiv_hydaelyn_intro_playback_fix.patch
+  - sha256: 82895c82251395d733226e920fe9caa2f5703205c4c2fdb40480020b113fed07

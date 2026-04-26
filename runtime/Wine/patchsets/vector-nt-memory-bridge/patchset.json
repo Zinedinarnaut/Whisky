@@ -1,0 +1,18 @@
+{
+  "patchset": {
+    "label": "vector-nt-memory-bridge",
+    "version": "1.0.0",
+    "createdAt": "2026-04-02T00:50:44Z",
+    "baseWineSource": "upstream-wine",
+    "crossoverWineSource": "vector-runtime-overlay",
+    "patchCount": 1,
+    "patches": [
+      {
+        "file": "0001-vectorvmctl-nt-memory-bridge.patch",
+        "sha256": "8cb0347f24f25e0c098835202f088524168c2735ce781fd6c308f613d298c896",
+        "lineCount": 589,
+        "scope": "programs"
+      }
+    ]
+  }
+}
