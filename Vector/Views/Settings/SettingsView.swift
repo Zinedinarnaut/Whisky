@@ -51,6 +51,7 @@ struct SettingsView: View {
                     panel.directoryURL = BottleData.containerDir
                     panel.begin { result in
                         if result == .OK, let url = panel.urls.first {
+                            BottleStorageAccess.saveBookmark(for: url)
                             defaultBottleLocation = url
                         }
                     }

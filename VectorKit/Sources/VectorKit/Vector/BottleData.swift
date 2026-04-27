@@ -53,6 +53,7 @@ public struct BottleData: Codable {
         var bottles: [Bottle] = []
 
         for path in paths {
+            BottleStorageAccess.startAccessingIfNeeded(for: path)
             let bottleMetadata = path
                 .appending(path: "Metadata")
                 .appendingPathExtension("plist")

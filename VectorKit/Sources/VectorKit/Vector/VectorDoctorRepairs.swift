@@ -25,6 +25,7 @@ extension VectorDoctor {
         var needsPatchSync: Bool
         var needsMediaRepair: Bool
         var needsLauncherDependencyRepair: Bool
+        var remoteFixIDs: [VectorDoctorFixID]
         var mediaDetails: String
         var launcherDetails: String
     }
@@ -33,13 +34,15 @@ extension VectorDoctor {
         for bottle: Bottle,
         runtime: VectorDoctorRuntimeSnapshot,
         dispatch: VectorDoctorDispatchSnapshot,
-        logs: [VectorDoctorLogSnippet]
+        logs: [VectorDoctorLogSnippet],
+        remoteFixIDs: [String] = []
     ) -> RepairSignals {
         let logText = logs.map(\.tail).joined(separator: "\n").lowercased()
         let missingMediaDLLs = missingDLLs(mediaPlaybackDLLs, in: bottle)
         let hasMediaLogFault = containsAny(mediaFaultNeedles, in: logText)
         let hasLauncherFault = containsAny(launcherFaultNeedles, in: logText)
         let hasWineserverMismatch = containsAny(wineserverFaultNeedles, in: logText)
+        let normalizedRemoteFixIDs = remoteFixIDs.compactMap(VectorDoctorFixID.init(rawValue:))
 
         return RepairSignals(
             needsRuntimeRepair: !runtime.bundledWinePresent || !runtime.bundledWineserverPresent,
@@ -47,6 +50,7 @@ extension VectorDoctor {
             needsPatchSync: dispatch.updateAvailable,
             needsMediaRepair: hasMediaLogFault || !missingMediaDLLs.isEmpty,
             needsLauncherDependencyRepair: hasLauncherFault,
+            remoteFixIDs: normalizedRemoteFixIDs,
             mediaDetails: mediaDetails(missingDLLs: missingMediaDLLs),
             launcherDetails: launcherDetails(hasFault: hasLauncherFault)
         )
@@ -67,6 +71,13 @@ extension VectorDoctor {
             to: &fixes,
             when: signals.needsLauncherDependencyRepair && protectedAssessment?.shouldBlockLocalLaunch != true
         )
+        let protectedLaunchBlocked = protectedAssessment?.shouldBlockLocalLaunch == true
+        for remoteFixID in signals.remoteFixIDs {
+            if remoteFixID == .repairLauncherDependencies && protectedLaunchBlocked {
+                continue
+            }
+            appendFix(remoteFixID, to: &fixes, when: true)
+        }
         appendFix(.exportDiagnosticBundle, to: &fixes, when: true)
 
         return fixes

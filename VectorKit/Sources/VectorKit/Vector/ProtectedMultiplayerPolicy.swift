@@ -53,6 +53,22 @@ public struct ProtectedTitlePolicy: Codable, Equatable, Sendable {
     public var allowedLaunchArguments: [String]
     public var localLaunchDisposition: ProtectedLocalLaunchDisposition
 
+    private enum CodingKeys: String, CodingKey {
+        case allowMemoryAccess
+        case allowTrainerLaunch
+        case allowLocalOverrides
+        case allowUnsignedRules
+        case allowDebugTooling
+        case allowCustomLaunchMutations
+        case allowedDLLOverrides = "allowedDllOverrides"
+        case allowedLaunchArguments
+        case localLaunchDisposition
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case allowedDLLOverrides
+    }
+
     public init(
         allowMemoryAccess: Bool,
         allowTrainerLaunch: Bool,
@@ -73,6 +89,32 @@ public struct ProtectedTitlePolicy: Codable, Equatable, Sendable {
         self.allowedDLLOverrides = allowedDLLOverrides
         self.allowedLaunchArguments = allowedLaunchArguments
         self.localLaunchDisposition = localLaunchDisposition
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+
+        self.allowMemoryAccess = try container.decodeIfPresent(Bool.self, forKey: .allowMemoryAccess) ?? false
+        self.allowTrainerLaunch = try container.decodeIfPresent(Bool.self, forKey: .allowTrainerLaunch) ?? false
+        self.allowLocalOverrides = try container.decodeIfPresent(Bool.self, forKey: .allowLocalOverrides) ?? false
+        self.allowUnsignedRules = try container.decodeIfPresent(Bool.self, forKey: .allowUnsignedRules) ?? false
+        self.allowDebugTooling = try container.decodeIfPresent(Bool.self, forKey: .allowDebugTooling) ?? false
+        self.allowCustomLaunchMutations = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .allowCustomLaunchMutations
+        ) ?? false
+        self.allowedDLLOverrides = try container.decodeIfPresent([String].self, forKey: .allowedDLLOverrides)
+            ?? legacyContainer.decodeIfPresent([String].self, forKey: .allowedDLLOverrides)
+            ?? []
+        self.allowedLaunchArguments = try container.decodeIfPresent(
+            [String].self,
+            forKey: .allowedLaunchArguments
+        ) ?? []
+        self.localLaunchDisposition = try container.decodeIfPresent(
+            ProtectedLocalLaunchDisposition.self,
+            forKey: .localLaunchDisposition
+        ) ?? .block
     }
 
     public static let hardLockdown = ProtectedTitlePolicy(
@@ -311,7 +353,7 @@ public enum VectorProtectedTitlePolicyEngine {
         }
 
         if detectedArtifacts.contains(where: isProtectedAntiCheatArtifact) {
-            let generic = genericBlockedAntiCheatDescriptor()
+            let generic = genericBlockedAntiCheatDescriptor(for: detectedArtifacts)
             return blockedAssessment(for: generic, artifacts: detectedArtifacts)
         }
 
@@ -348,7 +390,7 @@ public enum VectorProtectedTitlePolicyEngine {
 
         let descriptor = findings.contains(where: { matches(arcRaiders, path: normalizedPath($0)) })
             ? arcRaiders
-            : genericBlockedAntiCheatDescriptor()
+            : genericBlockedAntiCheatDescriptor(for: findings)
         return blockedAssessment(for: descriptor, artifacts: findings)
     }
 
@@ -529,8 +571,9 @@ public enum VectorProtectedTitlePolicyEngine {
         )
     }
 
-    private static func genericBlockedAntiCheatDescriptor() -> ProtectedTitleDescriptor {
-        ProtectedTitleDescriptor(
+    private static func genericBlockedAntiCheatDescriptor(for artifacts: [String] = []) -> ProtectedTitleDescriptor {
+        let provider = protectedProviderName(for: artifacts)
+        return ProtectedTitleDescriptor(
             id: "generic-protected-anticheat",
             title: "Protected anti-cheat title",
             steamAppID: "",
@@ -541,7 +584,7 @@ public enum VectorProtectedTitlePolicyEngine {
                 "eosanticheatservice.exe"
             ],
             pathFragments: protectedAntiCheatMarkerFragments,
-            antiCheatProvider: "Protected anti-cheat (EAC / BattlEye / EOS / kernel-service class)",
+            antiCheatProvider: provider,
             trustClassification: .blockedAntiCheat,
             officialSupportRequired: true,
             fallbackPlayOptions: [
@@ -552,6 +595,34 @@ public enum VectorProtectedTitlePolicyEngine {
             supportContactStatus: "Unknown",
             policy: .hardLockdown
         )
+    }
+
+    private static func protectedProviderName(for artifacts: [String]) -> String {
+        let normalized = artifacts.map(normalizedPath).joined(separator: " ")
+        if normalized.contains("embarkgameboot") {
+            return "Easy Anti-Cheat / Embark Game Boot"
+        }
+        if normalized.contains("easyanticheat") {
+            return "Easy Anti-Cheat"
+        }
+        if normalized.contains("eos_anticheat")
+            || normalized.contains("eosanticheat")
+            || normalized.contains("start_protected_game") {
+            return "EOS Anti-Cheat"
+        }
+        if normalized.contains("battleye")
+            || normalized.contains("beservice")
+            || normalized.contains("beclient")
+            || normalized.contains("bedaisy") {
+            return "BattlEye"
+        }
+        if normalized.contains("ricochet") || normalized.contains("randgrid") {
+            return "Ricochet-like protected service"
+        }
+        if normalized.contains("vgk") || normalized.contains("vanguard") {
+            return "Riot Vanguard"
+        }
+        return "Protected anti-cheat (EAC / BattlEye / EOS / kernel-service class)"
     }
 
     private static func matches(_ descriptor: ProtectedTitleDescriptor, appID: String) -> Bool {

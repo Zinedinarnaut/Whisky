@@ -62,6 +62,35 @@ public struct DispatchPatchRule: Codable, Sendable {
     public var allowedOverrideKeys: [String]
     public var studioApproved: Bool
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case executableMatch
+        case steamAppID = "steamAppId"
+        case arguments
+        case environment
+        case enabled
+        case channel
+        case signature
+        case changelog
+        case priority
+        case ruleVersion
+        case graphicsBackend
+        case fallbackGraphicsBackend
+        case rollbackToRuleVersion
+        case source
+        case trustClass
+        case riskLevel
+        case protectedTitlePolicy
+        case officialSupportRequired
+        case allowedOverrideKeys
+        case studioApproved
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case steamAppID
+    }
+
     public init(
         id: String = UUID().uuidString,
         name: String,
@@ -112,10 +141,13 @@ public struct DispatchPatchRule: Codable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
         self.id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Dispatch Rule"
         self.executableMatch = try container.decodeIfPresent(String.self, forKey: .executableMatch) ?? ""
-        self.steamAppID = try container.decodeIfPresent(String.self, forKey: .steamAppID) ?? ""
+        self.steamAppID = try container.decodeIfPresent(String.self, forKey: .steamAppID)
+            ?? legacyContainer.decodeIfPresent(String.self, forKey: .steamAppID)
+            ?? ""
         self.arguments = try container.decodeIfPresent(String.self, forKey: .arguments) ?? ""
         self.environment = try container.decodeIfPresent([String: String].self, forKey: .environment) ?? [:]
         self.enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
@@ -317,6 +349,71 @@ public struct DispatchPatchEnvelope: Codable, Sendable {
         self.generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt) ?? ""
         self.changelog = try container.decodeIfPresent(String.self, forKey: .changelog) ?? ""
         self.rules = try container.decodeIfPresent([DispatchPatchRule].self, forKey: .rules) ?? []
+    }
+}
+
+public struct DispatchDoctorSignal: Codable, Sendable {
+    public var id: String
+    public var title: String
+    public var summary: String
+    public var steamAppID: String
+    public var executableMatch: String
+    public var matchFragments: [String]
+    public var fixIDs: [String]
+    public var trustClass: GameTrustClassification
+    public var riskLevel: ProtectedRuleRiskLevel
+    public var updatedAt: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case summary
+        case steamAppID = "steamAppId"
+        case executableMatch
+        case matchFragments
+        case fixIDs = "fixIds"
+        case trustClass
+        case riskLevel
+        case updatedAt
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case steamAppID
+        case fixIDs
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        self.id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Doctor Signal"
+        self.summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        self.steamAppID = try container.decodeIfPresent(String.self, forKey: .steamAppID)
+            ?? legacyContainer.decodeIfPresent(String.self, forKey: .steamAppID)
+            ?? ""
+        self.executableMatch = try container.decodeIfPresent(String.self, forKey: .executableMatch) ?? ""
+        self.matchFragments = try container.decodeIfPresent([String].self, forKey: .matchFragments) ?? []
+        self.fixIDs = try container.decodeIfPresent([String].self, forKey: .fixIDs)
+            ?? legacyContainer.decodeIfPresent([String].self, forKey: .fixIDs)
+            ?? []
+        self.trustClass = try container.decodeIfPresent(GameTrustClassification.self, forKey: .trustClass)
+            ?? .singlePlayer
+        self.riskLevel = try container.decodeIfPresent(ProtectedRuleRiskLevel.self, forKey: .riskLevel)
+            ?? .low
+        self.updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
+    }
+}
+
+public struct DispatchDoctorSignalsEnvelope: Codable, Sendable {
+    public var version: Int
+    public var generatedAt: String
+    public var signals: [DispatchDoctorSignal]
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        self.generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt) ?? ""
+        self.signals = try container.decodeIfPresent([DispatchDoctorSignal].self, forKey: .signals) ?? []
     }
 }
 
@@ -1629,6 +1726,44 @@ public actor DispatchPatchService {
         )
     }
 
+    public func doctorSignals(
+        for bottle: Bottle,
+        executablePath: String = "",
+        logText: String = ""
+    ) async -> [DispatchDoctorSignal] {
+        guard bottle.settings.patchDispatchEnabled,
+              let endpointURL = doctorSignalsURL(
+                from: bottle.settings.patchDispatchEndpointURL,
+                bottle: bottle,
+                executablePath: executablePath
+              ) else {
+            return []
+        }
+
+        do {
+            let request = URLRequest(
+                url: endpointURL,
+                cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                timeoutInterval: 6
+            )
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode) else {
+                throw URLError(.badServerResponse)
+            }
+
+            let envelope = try decoder.decode(DispatchDoctorSignalsEnvelope.self, from: data)
+            return envelope.signals.filter {
+                doctorSignal($0, matchesBottle: bottle, executablePath: executablePath, logText: logText)
+            }
+        } catch {
+            Logger.wineKit.warning(
+                "VecPatch doctor signal fetch failed for \(endpointURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            return []
+        }
+    }
+
     public func reportTelemetry(
         for bottle: Bottle,
         programPath: String,
@@ -2050,6 +2185,57 @@ public actor DispatchPatchService {
         }
         components.query = nil
         return components.url
+    }
+
+    private func doctorSignalsURL(from patchEndpoint: String, bottle: Bottle, executablePath: String) -> URL? {
+        let trimmed = patchEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var components = URLComponents(string: trimmed) else {
+            return nil
+        }
+
+        let patchPath = components.path
+        if patchPath.hasSuffix("/patches") {
+            components.path = String(patchPath.dropLast("/patches".count)) + "/doctor-signals"
+        } else if patchPath.hasSuffix("/rules") {
+            components.path = String(patchPath.dropLast("/rules".count)) + "/doctor-signals"
+        } else {
+            let basePath = patchPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            components.path = basePath.isEmpty ? "/api/v1/doctor-signals" : "/\(basePath)/doctor-signals"
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "channel", value: bottle.settings.patchDispatchChannel.rawValue),
+            URLQueryItem(
+                name: "steam_app_id",
+                value: bottle.settings.activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+            ),
+            URLQueryItem(name: "executable", value: executablePath)
+        ]
+        return components.url
+    }
+
+    private func doctorSignal(
+        _ signal: DispatchDoctorSignal,
+        matchesBottle bottle: Bottle,
+        executablePath: String,
+        logText: String
+    ) -> Bool {
+        let normalizedExecutablePath = executablePath.lowercased()
+        let normalizedLogText = logText.lowercased()
+        let signalAppID = signal.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let activeAppID = bottle.settings.activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !signalAppID.isEmpty, signalAppID == activeAppID {
+            return true
+        }
+        if !signal.executableMatch.isEmpty,
+           normalizedExecutablePath.contains(signal.executableMatch.lowercased()) {
+            return true
+        }
+        return signal.matchFragments.contains { fragment in
+            let normalized = fragment.lowercased()
+            return normalizedExecutablePath.contains(normalized) || normalizedLogText.contains(normalized)
+        }
     }
 
     private func sendTelemetryPayload(_ payload: [String: Any], to url: URL) async {

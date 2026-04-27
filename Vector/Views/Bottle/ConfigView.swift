@@ -1073,6 +1073,7 @@ struct ConfigView: View {
 
     private func applyVectorDoctorFix(_ fixID: VectorDoctorFixID) {
         vectorDoctorFixInFlight = fixID
+        vectorDoctorStatusMessage = "Running \(fixID.displayName)..."
         defer {
             if fixID == .exportDiagnosticBundle || fixID == .reapplyVecPatch {
                 vectorDoctorFixInFlight = nil

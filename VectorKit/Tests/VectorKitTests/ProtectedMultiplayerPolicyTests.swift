@@ -139,6 +139,57 @@ final class ProtectedMultiplayerPolicyTests: XCTestCase {
         XCTAssertTrue(VectorProtectedTitlePolicyEngine.ruleAllowed(rule, in: bottle))
     }
 
+    func testDispatchPayloadDecodesSnakeCaseAcronymFields() throws {
+        let data = Data("""
+        {
+          "version": 1,
+          "generated_at": "2026-04-27T00:00:00Z",
+          "rules": [
+            {
+              "name": "ARC blocked metadata",
+              "steam_app_id": "2767030",
+              "protected_title_policy": {
+                "allow_memory_access": false,
+                "allowed_dll_overrides": [],
+                "local_launch_disposition": "block"
+              },
+              "trust_class": "blockedAntiCheat",
+              "risk_level": "blocked"
+            }
+          ]
+        }
+        """.utf8)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let envelope = try decoder.decode(DispatchPatchEnvelope.self, from: data)
+        let rule = try XCTUnwrap(envelope.rules.first)
+
+        XCTAssertEqual(rule.steamAppID, "2767030")
+        XCTAssertEqual(rule.protectedTitlePolicy?.localLaunchDisposition, .block)
+        XCTAssertEqual(rule.trustClass, .blockedAntiCheat)
+        XCTAssertEqual(rule.riskLevel, .blocked)
+
+        let signalData = Data("""
+        {
+          "version": 1,
+          "generated_at": "2026-04-27T00:00:00Z",
+          "signals": [
+            {
+              "id": "minecraft-dungeons-auth",
+              "steam_app_id": "1672970",
+              "fix_ids": ["repairLauncherDependencies", "reapplyVecPatch"]
+            }
+          ]
+        }
+        """.utf8)
+        let signalEnvelope = try decoder.decode(DispatchDoctorSignalsEnvelope.self, from: signalData)
+        let signal = try XCTUnwrap(signalEnvelope.signals.first)
+
+        XCTAssertEqual(signal.steamAppID, "1672970")
+        XCTAssertEqual(signal.fixIDs, ["repairLauncherDependencies", "reapplyVecPatch"])
+    }
+
     private func makeBottle() throws -> Bottle {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "VectorProtectedPolicyTests-")

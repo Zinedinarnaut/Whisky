@@ -119,6 +119,8 @@ final class BottleVM: ObservableObject, @unchecked Sendable {
         options: BottleCreationOptions = .standard
     ) -> URL {
         let newBottleDir = bottleURL.appending(path: UUID().uuidString)
+        BottleStorageAccess.saveBookmark(for: bottleURL)
+        BottleStorageAccess.startAccessingIfNeeded(for: bottleURL)
 
         Task.detached {
             var bottleId: Bottle?

@@ -41,6 +41,8 @@ private enum BottleCreationTemplate: String, CaseIterable, Identifiable {
 struct BottleCreationView: View {
     @Binding var newlyCreatedBottleURL: URL?
 
+    @AppStorage("defaultBottleLocation") private var defaultBottleLocation = BottleData.defaultBottleDir
+
     @State private var newBottleName: String = ""
     @State private var newBottleVersion: WinVersion = .win10
     @State private var newBottleURL: URL = UserDefaults.standard.url(forKey: "defaultBottleLocation")
@@ -52,6 +54,7 @@ struct BottleCreationView: View {
     @State private var autoApplyKnownPatches: Bool = true
     @State private var enablePatchDispatch: Bool = true
     @State private var patchDispatchEndpointURL: String = BottleDispatchConfig.defaultEndpointURL
+    @State private var saveLocationAsDefault: Bool = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -117,21 +120,30 @@ struct BottleCreationView: View {
                     .foregroundStyle(.secondary)
                 }
 
-                ActionView(
-                    text: "create.path",
-                    subtitle: newBottleURL.prettyPath(),
-                    actionName: "create.browse"
-                ) {
-                    let panel = NSOpenPanel()
-                    panel.canChooseFiles = false
-                    panel.canChooseDirectories = true
-                    panel.allowsMultipleSelection = false
-                    panel.canCreateDirectories = true
-                    panel.directoryURL = BottleData.containerDir
-                    panel.begin { result in
-                        if result == .OK, let url = panel.urls.first {
-                            newBottleURL = url
+                Section("Storage") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Bottle location")
+                                Text(newBottleURL.prettyPath())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                            Spacer()
+                            Button("Default") {
+                                newBottleURL = defaultBottleLocation
+                            }
+                            Button("Choose...") {
+                                chooseBottleLocation()
+                            }
                         }
+
+                        Toggle("Use this location as my default", isOn: $saveLocationAsDefault)
+
+                        Text(storageLocationStatus.message)
+                            .font(.caption)
+                            .foregroundColor(storageLocationStatus.isUsable ? .secondary : .red)
                     }
                 }
             }
@@ -149,7 +161,7 @@ struct BottleCreationView: View {
                         submit()
                     }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!nameValid)
+                    .disabled(!nameValid || !storageLocationStatus.isUsable)
                 }
             }
             .onSubmit {
@@ -160,7 +172,35 @@ struct BottleCreationView: View {
         .frame(width: ViewWidth.small)
     }
 
+    private var storageLocationStatus: BottleStorageLocationStatus {
+        BottleStorageLocationStatus(url: newBottleURL)
+    }
+
+    private func chooseBottleLocation() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = newBottleURL
+        panel.prompt = "Use Location"
+        panel.message = "Choose where Vector should store this bottle. External drives are supported."
+        panel.begin { result in
+            if result == .OK, let url = panel.urls.first {
+                newBottleURL = url
+            }
+        }
+    }
+
     func submit() {
+        guard nameValid, storageLocationStatus.isUsable else {
+            return
+        }
+
+        if saveLocationAsDefault {
+            defaultBottleLocation = newBottleURL
+        }
+
         let options: BottleCreationOptions
         if creationTemplate == .gaming {
             options = BottleCreationOptions(
@@ -186,6 +226,47 @@ struct BottleCreationView: View {
                                                                 bottleURL: newBottleURL,
                                                                 options: options)
         dismiss()
+    }
+}
+
+private struct BottleStorageLocationStatus {
+    var isUsable: Bool
+    var message: String
+
+    init(url: URL) {
+        let fileManager = FileManager.default
+        let path = url.path(percentEncoded: false)
+        var isDirectory: ObjCBool = false
+
+        if fileManager.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue {
+            self.isUsable = false
+            self.message = "Selected location is a file, not a folder."
+            return
+        }
+
+        let validationURL = fileManager.fileExists(atPath: path) ? url : url.deletingLastPathComponent()
+        let validationPath = validationURL.path(percentEncoded: false)
+        guard fileManager.fileExists(atPath: validationPath),
+              fileManager.isWritableFile(atPath: validationPath) else {
+            self.isUsable = false
+            self.message = "Vector cannot write to this location."
+            return
+        }
+
+        let values = try? validationURL.resourceValues(
+            forKeys: [.volumeNameKey, .volumeIsInternalKey, .volumeAvailableCapacityForImportantUsageKey]
+        )
+        let volumeName = values?.volumeName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let locationKind = values?.volumeIsInternal == false ? "External storage" : "Local storage"
+        let freeSpace = values?.volumeAvailableCapacityForImportantUsage.map {
+            ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
+        }
+        let details = [locationKind, volumeName, freeSpace.map { "\($0) available" }]
+            .compactMap { $0 }
+            .joined(separator: " - ")
+
+        self.isUsable = true
+        self.message = details.isEmpty ? "Ready to create bottles here." : details
     }
 }
 

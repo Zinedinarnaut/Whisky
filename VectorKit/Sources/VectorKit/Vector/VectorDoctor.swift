@@ -30,11 +30,18 @@ public enum VectorDoctor {
         )
         let bridge = bridgeSnapshot(for: bottle, host: host, protectedAssessment: protectedAssessment)
         let logs = recentLogSnippets(for: bottle, maxCount: 3)
+        let logText = logs.map(\.tail).joined(separator: "\n")
+        let doctorSignals = await DispatchPatchService.shared.doctorSignals(
+            for: bottle,
+            executablePath: bottle.settings.pins.first?.url?.path(percentEncoded: false) ?? "",
+            logText: logText
+        )
         let repairSignals = repairSignals(
             for: bottle,
             runtime: runtime,
             dispatch: dispatch,
-            logs: logs
+            logs: logs,
+            remoteFixIDs: doctorSignals.flatMap(\.fixIDs)
         )
         let checks = checksForReport(
             CheckContext(

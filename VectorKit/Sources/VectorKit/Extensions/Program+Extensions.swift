@@ -69,7 +69,10 @@ extension Program {
                 await BottleGamingModeManager.prepareProfilesForLaunch(for: self.bottle)
 
                 var arguments = self.runtimeArguments()
-                let launchURL = self.resolvedLaunchExecutableURL(arguments: &arguments)
+                var launchURL = self.resolvedLaunchExecutableURL(arguments: &arguments)
+                _ = await VectorLaunchDoctor.prepareForLaunch(programURL: launchURL, bottle: self.bottle)
+                arguments = self.runtimeArguments()
+                launchURL = self.resolvedLaunchExecutableURL(arguments: &arguments)
                 let environment = self.runtimeEnvironment()
                 let activeSteamAppID = self.bottle.settings.activeSteamAppID
                     .trimmingCharacters(in: .whitespacesAndNewlines)

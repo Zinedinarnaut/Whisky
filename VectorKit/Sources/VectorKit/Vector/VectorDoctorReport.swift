@@ -33,6 +33,23 @@ public enum VectorDoctorFixID: String, Codable, CaseIterable, Sendable, Identifi
     case exportDiagnosticBundle
 
     public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .repairRuntime:
+            return "runtime repair"
+        case .killMismatchedWineserver:
+            return "wineserver reset"
+        case .reapplyVecPatch:
+            return "VecPatch sync"
+        case .repairMediaPlayback:
+            return "media repair"
+        case .repairLauncherDependencies:
+            return "launcher dependency repair"
+        case .exportDiagnosticBundle:
+            return "diagnostic export"
+        }
+    }
 }
 
 public struct VectorDoctorFixSuggestion: Codable, Identifiable, Sendable {
