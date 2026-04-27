@@ -24,6 +24,7 @@ extension Program {
     private static let runtimeWineOverrideEnvironmentKey = "VECTOR_WINE_BIN_OVERRIDE"
     private static let runtimeWineserverOverrideEnvironmentKey = "VECTOR_WINESERVER_BIN_OVERRIDE"
     private static let steamExecutableName = "steam.exe"
+    private static let steamClientSafeDLLOverrides = "nvapi,nvapi64=d"
     private static let steamUsersDirectoryName = "userdata"
     private static let steamUserLocalConfigSuffix = "config/localconfig.vdf"
     private static let highOnLife2SteamAppID = "2069250"
@@ -1025,8 +1026,9 @@ bCEFGPUAcceleration=False
         _ environment: inout [String: String],
         usingCompatibilityRuntime: Bool
     ) {
-        if usingCompatibilityRuntime {
-            // Preserve bottle graphics env so game processes launched by Steam keep DXVK/D3D11 support.
+        if usingCompatibilityRuntime, steamSettingsLaunchesApp() {
+            // Preserve bottle graphics env only for direct Steam app-launch
+            // commands. Plain Steam client startup must stay on Wine builtins.
             return
         }
 
@@ -1041,8 +1043,11 @@ bCEFGPUAcceleration=False
         environment["DXVK_ASYNC"] = "0"
         environment["DXVK_HUD"] = "0"
         environment["DXVK_LOG_LEVEL"] = "none"
+        environment["VECTOR_FORCE_DISABLE_DXVK"] = "1"
+        environment.removeValue(forKey: Self.effectiveBackendEnvironmentKey)
+        environment.removeValue(forKey: Self.effectiveFallbackBackendEnvironmentKey)
         if shouldPreserveGraphicsPipeline {
-            environment.removeValue(forKey: "WINEDLLOVERRIDES")
+            environment["WINEDLLOVERRIDES"] = Self.steamClientSafeDLLOverrides
             environment.removeValue(forKey: "ROSETTA_ADVERTISE_AVX")
         } else {
             environment["WINEDLLOVERRIDES"] = ""
@@ -1519,11 +1524,11 @@ bCEFGPUAcceleration=False
         }
 
         let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if normalizedAppID == Self.minecraftDungeonsSteamAppID {
-            return true
+        guard normalizedAppID == Self.minecraftDungeonsSteamAppID else {
+            return false
         }
 
-        return steamContainsMinecraftDungeonsInstall(inSteamRoot: url.deletingLastPathComponent())
+        return steamSettingsLaunchesApp()
     }
 
     private func shouldApplyContentWarningSteamEnvironmentOverrides(activeSteamAppID: String) -> Bool {

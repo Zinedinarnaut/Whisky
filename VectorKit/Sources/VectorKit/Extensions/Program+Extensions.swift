@@ -631,7 +631,7 @@ extension Program {
 
     private func runSteamInWine(arguments: [String], environment: [String: String]) async throws {
         let activeSteamAppID = bottle.settings.activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if shouldApplyMinecraftDungeonsCompatibility(activeSteamAppID: activeSteamAppID) {
+        if activeSteamAppID == "1672970", steamSettingsLaunchesApp() {
             await ensureSteamClientBuiltinsForGameD3DOverrides(environment: environment)
         } else {
             await clearSteamWebHelperBuiltinsIfNeeded(environment: environment)
