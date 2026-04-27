@@ -1500,18 +1500,23 @@ struct ConfigView: View {
             "xal",
             "xbl",
             "msxbl",
+            "ms-xal",
+            "ms-xbl",
+            "ms-appx",
+            "ms-appx-web",
             "ms-xbl-multiplayer",
             "ms-xbl-3d8b930f",
             "ms-xal-3d8b930f"
         ]
         let edgeSchemes = ["microsoft-edge", "microsoft-edge-userdata"]
-        let steamCommand = #""C:\Program Files (x86)\Steam\steam.exe" -- "%1""#
+        let callbackCommand = resolveMinecraftDungeonsCallbackProtocolCommand(in: bottle)
+            ?? #""C:\Program Files (x86)\Steam\steam.exe" -applaunch 1672970 "%1""#
 
         var registeredCount = 0
         for scheme in steamSchemes {
             registeredCount += await writeProtocolHandler(
                 scheme: scheme,
-                command: steamCommand,
+                command: callbackCommand,
                 bottle: bottle
             )
         }
@@ -1527,6 +1532,34 @@ struct ConfigView: View {
         }
 
         return registeredCount
+    }
+
+    private static func resolveMinecraftDungeonsCallbackProtocolCommand(in bottle: Bottle) -> String? {
+        let candidates: [(hostPath: String, command: String)] = [
+            (
+                "drive_c/Program Files (x86)/Steam/steamapps/common/MinecraftDungeons/Dungeons.exe",
+                #""C:\Program Files (x86)\Steam\steamapps\common\MinecraftDungeons\Dungeons.exe" "%1""#
+            ),
+            (
+                "drive_c/Program Files/Steam/steamapps/common/MinecraftDungeons/Dungeons.exe",
+                #""C:\Program Files\Steam\steamapps\common\MinecraftDungeons\Dungeons.exe" "%1""#
+            ),
+            (
+                "drive_c/Program Files (x86)/Steam/steamapps/common/MinecraftDungeons/MinecraftDungeons.exe",
+                #""C:\Program Files (x86)\Steam\steamapps\common\MinecraftDungeons\MinecraftDungeons.exe" "%1""#
+            ),
+            (
+                "drive_c/Program Files/Steam/steamapps/common/MinecraftDungeons/MinecraftDungeons.exe",
+                #""C:\Program Files\Steam\steamapps\common\MinecraftDungeons\MinecraftDungeons.exe" "%1""#
+            )
+        ]
+
+        return candidates.first { candidate in
+            let path = bottle.url
+                .appending(path: candidate.hostPath)
+                .path(percentEncoded: false)
+            return FileManager.default.fileExists(atPath: path)
+        }?.command
     }
 
     private static func writeProtocolHandler(
