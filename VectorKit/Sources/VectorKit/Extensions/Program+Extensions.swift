@@ -630,20 +630,7 @@ extension Program {
     }
 
     private func runSteamInWine(arguments: [String], environment: [String: String]) async throws {
-        let activeSteamAppID = bottle.settings.activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if activeSteamAppID == "1672970", steamSettingsLaunchesApp() {
-            await ensureSteamClientBuiltinsForGameD3DOverrides(environment: environment)
-        } else {
-            await clearSteamWebHelperBuiltinsIfNeeded(environment: environment)
-        }
-        await ensureGlobalMediaPlaybackDefaults(environment: environment)
-        await ensureHighOnLife2AppDefaults(environment: environment)
-        await ensureParcelSimulatorAppDefaults(environment: environment)
-        await ensureMinecraftDungeonsAppDefaults(environment: environment)
-        await ensureContentWarningAppDefaults(environment: environment)
-        await ensureOriginAppDefaults(environment: environment)
-        await ensureTitanfall2AppDefaults(environment: environment)
-        await ensureSilentHillFAppDefaults(environment: environment)
+        await prepareSteamLaunchRegistryState(environment: environment)
         try await resetSteamWineserver(environment: environment)
         var launchStatus = try await Wine.runProgramDirectWithTerminationStatus(
             at: self.url,
@@ -684,6 +671,31 @@ extension Program {
             bottle: self.bottle,
             environment: environment
         )
+    }
+
+    private func prepareSteamLaunchRegistryState(environment: [String: String]) async {
+        let activeSteamAppID = bottle.settings.activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shouldBridgeMinecraftDungeonsSteamUI =
+            !steamSettingsLaunchesApp()
+            && steamContainsMinecraftDungeonsInstall(inSteamRoot: url.deletingLastPathComponent())
+        if activeSteamAppID == "1672970", steamSettingsLaunchesApp() {
+            await ensureSteamClientBuiltinsForGameD3DOverrides(environment: environment)
+        } else if shouldBridgeMinecraftDungeonsSteamUI {
+            await ensureMinecraftDungeonsSteamChildLaunchBridge(environment: environment)
+        } else {
+            await clearSteamWebHelperBuiltinsIfNeeded(environment: environment)
+        }
+        await ensureGlobalMediaPlaybackDefaults(environment: environment)
+        await ensureHighOnLife2AppDefaults(environment: environment)
+        await ensureParcelSimulatorAppDefaults(environment: environment)
+        await ensureMinecraftDungeonsAppDefaults(
+            environment: environment,
+            preserveGlobalD3DOverrides: shouldBridgeMinecraftDungeonsSteamUI
+        )
+        await ensureContentWarningAppDefaults(environment: environment)
+        await ensureOriginAppDefaults(environment: environment)
+        await ensureTitanfall2AppDefaults(environment: environment)
+        await ensureSilentHillFAppDefaults(environment: environment)
     }
 }
 // swiftlint:enable file_length

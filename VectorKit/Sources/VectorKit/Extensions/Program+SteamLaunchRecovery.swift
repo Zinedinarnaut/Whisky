@@ -396,6 +396,22 @@ extension Program {
         }
     }
 
+    func ensureMinecraftDungeonsSteamChildLaunchBridge(environment: [String: String]) async {
+        await ensureSteamClientBuiltinsForGameD3DOverrides(environment: environment)
+        await applyAppDefaultDLLOverrides(
+            registryKey: Self.minecraftDungeonsGlobalDLLOverridesKey,
+            dlls: Self.minecraftDungeonsBuiltinD3D11DLLs,
+            value: Self.minecraftDungeonsBuiltinOverrideValue,
+            environment: environment
+        )
+        await applyAppDefaultDLLOverrides(
+            registryKey: Self.minecraftDungeonsGlobalDLLOverridesKey,
+            dlls: Self.minecraftDungeonsDisabledDLLs,
+            value: Self.minecraftDungeonsDisabledOverrideValue,
+            environment: environment
+        )
+    }
+
     func ensureGlobalMediaPlaybackDefaults(environment: [String: String]) async {
         // Keep media fixes process-scoped. Persistent global media overrides
         // destabilize launchers such as Steam because Wine reads this key for
@@ -452,17 +468,25 @@ extension Program {
         writeParcelSimulatorAppDefaultsMarker()
     }
 
-    func ensureMinecraftDungeonsAppDefaults(environment: [String: String]) async {
+    func ensureMinecraftDungeonsAppDefaults(
+        environment: [String: String],
+        preserveGlobalD3DOverrides: Bool = false
+    ) async {
         let activeSteamAppID = bottle.settings.activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard shouldApplyMinecraftDungeonsCompatibility(activeSteamAppID: activeSteamAppID) else {
             return
         }
         await ensureMinecraftDungeonsProtocolBridge(environment: environment)
         if hasMinecraftDungeonsAppDefaultsMarker(), minecraftDungeonsAppDefaultsLookCurrent() {
+            if !preserveGlobalD3DOverrides {
+                await clearMinecraftDungeonsGlobalDLLOverrides(environment: environment)
+            }
             return
         }
 
-        await clearMinecraftDungeonsGlobalDLLOverrides(environment: environment)
+        if !preserveGlobalD3DOverrides {
+            await clearMinecraftDungeonsGlobalDLLOverrides(environment: environment)
+        }
 
         for executableName in Self.minecraftDungeonsExecutableNames {
             await applyMinecraftDungeonsAppDefaults(for: executableName, environment: environment)

@@ -93,6 +93,13 @@ extension Program {
         + "-cef-disable-accelerated-video-decode -cef-disable-low-latency-dxva "
         + "-cef-disable-zero-copy-dxgi-video -nosound"
     private static let minecraftDungeonsBuiltinD3DOverrides = "dxgi,d3d11,d3d10core,d3d9=n,b"
+    private static let minecraftDungeonsDXVKConfigFilename = "dxvk.conf"
+    private static let minecraftDungeonsDXVKConfigContents = """
+    d3d11.maxFeatureLevel = 11_0
+    dxgi.customVendorId = 10de
+    dxgi.customDeviceId = 1f02
+    dxgi.hideNvidiaGpu = True
+    """
     private static let minecraftDungeonsDLLOverridesToStrip: Set<String> = [
         "dxgi",
         "d3d11",
@@ -931,6 +938,9 @@ bCEFGPUAcceleration=False
             applyProtonStyleMediaMarkers(to: &environment)
             applyMinecraftDungeonsDLLOverrides(to: &environment)
         }
+        if let configURL = minecraftDungeonsDXVKConfigURLForSteamLaunch() {
+            environment["DXVK_CONFIG_FILE"] = configURL.path(percentEncoded: false)
+        }
         if shouldApplyContentWarningSteamEnvironmentOverrides(activeSteamAppID: activeSteamAppID) {
             // Keep Content Warning overrides app-scoped through AppDefaults.
             environment["DXVK_ENABLE_NVAPI"] = "0"
@@ -1743,7 +1753,11 @@ bCEFGPUAcceleration=False
         }
     }
 
-    private func steamContainsMinecraftDungeonsInstall(inSteamRoot steamRoot: URL) -> Bool {
+    func steamContainsMinecraftDungeonsInstall(inSteamRoot steamRoot: URL) -> Bool {
+        minecraftDungeonsInstallRoot(inSteamRoot: steamRoot) != nil
+    }
+
+    private func minecraftDungeonsInstallRoot(inSteamRoot steamRoot: URL) -> URL? {
         let commonRoot = steamRoot
             .appending(path: "steamapps")
             .appending(path: "common")
@@ -1752,30 +1766,64 @@ bCEFGPUAcceleration=False
             "MinecraftDungeons",
             "Dungeons"
         ]
-        let executableCandidates = rootCandidates.flatMap { rootName in
-            [
-                commonRoot
-                    .appending(path: rootName)
-                    .appending(path: "Dungeons")
-                    .appending(path: "Binaries")
-                    .appending(path: "Win64")
-                    .appending(path: "Dungeons-Win64-Shipping.exe"),
-                commonRoot
-                    .appending(path: rootName)
-                    .appending(path: "Binaries")
-                    .appending(path: "Win64")
-                    .appending(path: "Dungeons-Win64-Shipping.exe"),
-                commonRoot
-                    .appending(path: rootName)
-                    .appending(path: "Dungeons-Win64-Shipping.exe"),
-                commonRoot
-                    .appending(path: rootName)
-                    .appending(path: "MinecraftDungeons.exe")
-            ]
+
+        return rootCandidates
+            .map { commonRoot.appending(path: $0) }
+            .first { root in
+                let candidates = [
+                    root
+                        .appending(path: "Dungeons")
+                        .appending(path: "Binaries")
+                        .appending(path: "Win64")
+                        .appending(path: "Dungeons-Win64-Shipping.exe"),
+                    root
+                        .appending(path: "Binaries")
+                        .appending(path: "Win64")
+                        .appending(path: "Dungeons-Win64-Shipping.exe"),
+                    root.appending(path: "Dungeons-Win64-Shipping.exe"),
+                    root.appending(path: "MinecraftDungeons.exe")
+                ]
+                return candidates.contains {
+                    FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+                }
+            }
+    }
+
+    private func minecraftDungeonsDXVKConfigURLForSteamLaunch() -> URL? {
+        guard isSteamProgramPath else {
+            return nil
         }
 
-        return executableCandidates.contains {
-            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        return minecraftDungeonsInstallRoot(
+            inSteamRoot: url.deletingLastPathComponent()
+        )?.appending(path: Self.minecraftDungeonsDXVKConfigFilename)
+    }
+
+    private func ensureMinecraftDungeonsDXVKConfig(inSteamRoot steamRoot: URL) {
+        guard let configURL = minecraftDungeonsInstallRoot(inSteamRoot: steamRoot)?
+            .appending(path: Self.minecraftDungeonsDXVKConfigFilename) else {
+            return
+        }
+
+        let path = configURL.path(percentEncoded: false)
+        let contents = Self.minecraftDungeonsDXVKConfigContents + "\n"
+        if let current = try? String(contentsOf: configURL, encoding: .utf8),
+           current == contents {
+            return
+        }
+
+        do {
+            try contents.write(to: configURL, atomically: true, encoding: .utf8)
+            Logger.wineKit.info(
+                "Updated Minecraft Dungeons DXVK config at \(path, privacy: .public)"
+            )
+        } catch {
+            Logger.wineKit.warning(
+                "Failed to update Minecraft Dungeons DXVK config at \(path, privacy: .public)"
+            )
+            Logger.wineKit.warning(
+                "Minecraft Dungeons DXVK config error: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -2317,6 +2365,7 @@ bCEFGPUAcceleration=False
         if !Self.minecraftDungeonsSteamLaunchOptions.isEmpty,
            steamContainsMinecraftDungeonsInstall(inSteamRoot: steamRoot) {
             ensureMinecraftDungeonsEngineIniOverrides()
+            ensureMinecraftDungeonsDXVKConfig(inSteamRoot: steamRoot)
             ensureSteamLaunchOptions(
                 inSteamRoot: steamRoot,
                 appID: Self.minecraftDungeonsSteamAppID,
