@@ -32,8 +32,64 @@ enum LoadingState {
     case failed
 }
 
+private enum BottleConfigCategory: String, CaseIterable, Identifiable {
+    case essentials
+    case graphics
+    case runtime
+    case games
+    case advanced
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .essentials:
+            return "Essentials"
+        case .graphics:
+            return "Graphics"
+        case .runtime:
+            return "Runtime"
+        case .games:
+            return "Games"
+        case .advanced:
+            return "Advanced"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .essentials:
+            return "Health checks, repairs, snapshots, and safe one-click fixes."
+        case .graphics:
+            return "Rendering backend, media, DLSS, Metal, DXVK, and frame pacing."
+        case .runtime:
+            return "Windows version, Wine runtime, Steam behavior, and low-level runtime paths."
+        case .games:
+            return "VecPatch dispatch, launch profiles, launcher bootstrap, and game presets."
+        case .advanced:
+            return "Power-user controls that can change launch isolation or debugging behavior."
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .essentials:
+            return "checkmark.seal"
+        case .graphics:
+            return "display"
+        case .runtime:
+            return "terminal"
+        case .games:
+            return "gamecontroller"
+        case .advanced:
+            return "slider.horizontal.3"
+        }
+    }
+}
+
 struct ConfigView: View {
     @ObservedObject var bottle: Bottle
+    @State private var selectedConfigCategory: BottleConfigCategory = .essentials
     @State private var buildVersion: Int = 0
     @State private var retinaMode: Bool = false
     @State private var dpiConfig: Int = 96
@@ -81,7 +137,13 @@ struct ConfigView: View {
 
     var body: some View {
         Form {
-            if !missingDependencyFixes.isEmpty {
+            Section {
+                BottleConfigCategorySelector(selection: $selectedConfigCategory)
+            } footer: {
+                Text(selectedConfigCategory.subtitle)
+            }
+
+            if selectedConfigCategory == .essentials, !missingDependencyFixes.isEmpty {
                 Section("Fix Missing Dependencies", isExpanded: $dependencySectionExpanded) {
                     Text("Detected runtime/dependency issues for this bottle. Apply a one-click fix.")
                         .font(.subheadline)
@@ -119,6 +181,7 @@ struct ConfigView: View {
                     }
                 }
             }
+            if selectedConfigCategory == .runtime {
             Section("config.title.wine", isExpanded: $wineSectionExpanded) {
                 SettingItemView(title: "config.winVersion", loadingState: winVersionLoadingState) {
                     Picker("config.winVersion", selection: $bottle.settings.windowsVersion) {
@@ -200,6 +263,8 @@ struct ConfigView: View {
                     .help("Advertise AVX support to Windows apps. Helps some newer games but may break others.")
                 }
             }
+            }
+            if selectedConfigCategory == .graphics {
             Section("config.title.dxvk", isExpanded: $dxvkSectionExpanded) {
                 Toggle(isOn: $bottle.settings.dxvk) {
                     Text("config.dxvk")
@@ -240,6 +305,8 @@ struct ConfigView: View {
                     }
                 }
             }
+            }
+            if selectedConfigCategory == .runtime {
             Section("Runtime", isExpanded: $runtimeSectionExpanded) {
                 Picker("Runtime Selection", selection: $bottle.settings.runtimeSelection) {
                     ForEach(WineRuntimeSelection.allCases, id: \.self) { selection in
@@ -308,6 +375,8 @@ struct ConfigView: View {
                         .help("Optional URL to a Steam package archive used by compatibility setup flows.")
                 }
             }
+            }
+            if selectedConfigCategory == .graphics || selectedConfigCategory == .advanced {
             Section("Compatibility", isExpanded: $compatSectionExpanded) {
                 Picker("Graphics backend", selection: $bottle.settings.graphicsBackendMode) {
                     ForEach(GraphicsBackendMode.allCases, id: \.self) { mode in
@@ -329,6 +398,7 @@ struct ConfigView: View {
                     .help(
                         "Adds a global media-focused DLL override layer so intros, cutscenes, and embedded video playback work more reliably across launches."
                     )
+                if selectedConfigCategory == .advanced {
                 Toggle("Installer compatibility mode", isOn: $bottle.settings.installerCompatibilityMode)
                     .help(
                         "Applies installer-safe runtime and DLL override behavior for setup/install executables."
@@ -342,6 +412,7 @@ struct ConfigView: View {
                 .help(
                     "Controls runtime system32/syswow64 sync behavior. Verify modes fingerprint DLL drift and can optionally auto-repair."
                 )
+                }
                 Toggle("Enable DLSS runtime translation (DXMT)", isOn: $bottle.settings.dlssRuntimeTranslationEnabled)
                     .help(
                         "Enables DXMT NV extension translation path (DLSS/NGX shim routing) and installs required DXMT payload files at launch."
@@ -364,6 +435,7 @@ struct ConfigView: View {
                 Toggle("Use native macOS Game Mode launcher", isOn: $bottle.settings.nativeGameModeLaunchesEnabled)
                     .help("Launches non-Steam games through a game-classified app wrapper so macOS can enable Game Mode in fullscreen.")
 
+                if selectedConfigCategory == .advanced {
                 Picker("DLL overrides policy", selection: $bottle.settings.dllOverridesPolicy) {
                     ForEach(DLLOverridesPolicy.allCases, id: \.self) { policy in
                         Text(dllOverridesPolicyTitle(policy)).tag(policy)
@@ -432,7 +504,10 @@ struct ConfigView: View {
                         .font(.system(.body, design: .monospaced))
                         .help("Current Steam AppID used to match and apply game profiles.")
                 }
+                }
             }
+            }
+            if selectedConfigCategory == .essentials {
             Section("Smart Launch Doctor", isExpanded: $launchDoctorSectionExpanded) {
                 Toggle("Use Apple Intelligence summaries", isOn: $launchDoctorUseAppleIntelligence)
                     .help("Uses on-device intelligence summarization for diagnosis output when available.")
@@ -592,6 +667,8 @@ struct ConfigView: View {
                     }
                 }
             }
+            }
+            if selectedConfigCategory == .games {
             Section("Gaming & Patch Dispatch", isExpanded: $gamingSectionExpanded) {
                 Toggle("Enable gaming bottle mode", isOn: $bottle.settings.gamingModeEnabled)
                     .help("Turns on gaming-focused defaults and enables launcher/patch automation options.")
@@ -663,6 +740,8 @@ struct ConfigView: View {
                     .help("Runs launcher bootstrap immediately using this bottle's gaming mode settings.")
                 }
             }
+            }
+            if selectedConfigCategory == .graphics {
             Section("Performance", isExpanded: $perfSectionExpanded) {
                 Toggle("Enable shader cache", isOn: $bottle.settings.shaderCacheEnabled)
                     .help("Enable shader caching to reduce repeated shader compilation stutter across runs.")
@@ -700,6 +779,8 @@ struct ConfigView: View {
                 }
                 .disabled(!bottle.settings.fsrEnabled)
             }
+            }
+            if selectedConfigCategory == .games {
             Section("Game Profiles", isExpanded: $profilesSectionExpanded) {
                 if gameProfilesDraft.isEmpty {
                     Text("No profiles configured")
@@ -749,6 +830,8 @@ struct ConfigView: View {
                     .help("Create a new profile with per-game arguments and environment overrides.")
                 }
             }
+            }
+            if selectedConfigCategory == .essentials {
             Section("Snapshots", isExpanded: $snapshotsSectionExpanded) {
                 Text("Use snapshots before risky runtime or compatibility changes.")
                     .font(.subheadline)
@@ -781,6 +864,8 @@ struct ConfigView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            }
+            if selectedConfigCategory == .games {
             Section("Dependency Presets", isExpanded: $presetsSectionExpanded) {
                 Text("Quick-install common components via Winetricks.")
                     .font(.subheadline)
@@ -832,6 +917,7 @@ struct ConfigView: View {
                     .help("Pick and run a trainer executable directly inside this bottle.")
                 }
                 .disabled(snapshotInFlight)
+            }
             }
         }
         .formStyle(.grouped)
@@ -3551,6 +3637,38 @@ private struct DLSSRuntimeHealthModalView: View {
         }
         .padding(18)
         .frame(width: 600, height: 470)
+    }
+}
+
+private struct BottleConfigCategorySelector: View {
+    @Binding var selection: BottleConfigCategory
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bottle Controls")
+                        .font(.headline)
+                    Text("Choose a category instead of scrolling through every advanced switch.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Label(selection.title, systemImage: selection.icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Picker("Configuration category", selection: $selection) {
+                ForEach(BottleConfigCategory.allCases) { category in
+                    Label(category.title, systemImage: category.icon)
+                        .tag(category)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+        .padding(.vertical, 2)
     }
 }
 

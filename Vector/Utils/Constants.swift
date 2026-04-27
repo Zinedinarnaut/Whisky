@@ -256,6 +256,34 @@ enum VectorCompatibilityDatabase {
             ]
         ),
         CompatibilityGame(
+            id: "titanfall-2",
+            title: "Titanfall 2",
+            store: "Steam / EA App",
+            appID: "1237970",
+            rating: .needsTweaks,
+            recommendedArguments: "",
+            recommendedPreset: "Titanfall 2 + EA App Compatibility",
+            notes: [
+                "Requires the EA/Origin bootstrap layer before the game can reach launch.",
+                "Keep NVAPI disabled and use the compatibility runtime pair if the launcher stalls.",
+                "Steam-owned copies should still start through Steam so ownership and EA handoff work."
+            ]
+        ),
+        CompatibilityGame(
+            id: "ea-app-origin",
+            title: "EA App / Origin Bootstrap",
+            store: "Launcher",
+            appID: nil,
+            rating: .needsTweaks,
+            recommendedArguments: "",
+            recommendedPreset: "EA App Launcher Compatibility",
+            notes: [
+                "Use the launcher dependency repair path if the EA installer window fails to render.",
+                "Prefer one matched Wine/wineserver runtime pair to avoid version mismatch failures.",
+                "This entry exists so games depending on EA App can surface the same repair guidance."
+            ]
+        ),
+        CompatibilityGame(
             id: "lethal-company",
             title: "Lethal Company",
             store: "Steam",
