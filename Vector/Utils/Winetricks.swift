@@ -50,46 +50,40 @@ class Winetricks {
         guard let resourcesURL = Bundle.main.url(forResource: "cabextract", withExtension: nil)?
             .deletingLastPathComponent() else { return }
         let runtime = resolveRuntimeBinaries(for: bottle)
-        let runtimeBinDirectory = runtime.wine.deletingLastPathComponent().path(percentEncoded: false)
-        let bundledWineserverPath = VectorWineInstaller.binFolder
-            .appending(path: "wineserver")
-            .path(percentEncoded: false)
-        let compatibilityWineserverPath = VectorWineInstaller.steamCompatibilityWineserverBinary()?
-            .path(percentEncoded: false)
         let escapedPrefixPath = shellEscapedForDoubleQuotes(bottle.url.path)
-        let escapedBundledWineserverPath = shellEscapedForDoubleQuotes(bundledWineserverPath)
-
-        var preKillCommands: [String] = [
-            "WINEPREFIX=\"\(escapedPrefixPath)\" \"\(escapedBundledWineserverPath)\" -k >/dev/null 2>&1 || true"
-        ]
-        if let compatibilityWineserverPath {
-            let escapedCompatibilityWineserverPath = shellEscapedForDoubleQuotes(compatibilityWineserverPath)
-            let compatibilityKillCommand =
-                "WINEPREFIX=\"\(escapedPrefixPath)\" \"\(escapedCompatibilityWineserverPath)\" "
-                + "-k >/dev/null 2>&1 || true"
-            preKillCommands.append(
-                compatibilityKillCommand
-            )
-        }
-        let preKillPrefix = preKillCommands.joined(separator: "\n")
         let trimmedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCommand.isEmpty else { return }
+
+        let runtimeBinDirectory = runtime.wine.deletingLastPathComponent().path(percentEncoded: false)
         let escapedRuntimePath = shellEscapedForDoubleQuotes(runtimeBinDirectory)
         let escapedResourcesPath = shellEscapedForDoubleQuotes(resourcesURL.path(percentEncoded: false))
-        let escapedPathPrefix = "\(escapedRuntimePath):\(escapedResourcesPath)"
+        let cleanSystemPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        let escapedPath = "\(escapedRuntimePath):\(escapedResourcesPath):\(cleanSystemPath)"
+        let shutdownCommands = wineserverShutdownCommands(
+            for: wineserverCandidates(selected: runtime.wineserver, bottle: bottle)
+        )
 
         let scriptURL = FileManager.default.temporaryDirectory
             .appending(path: "vector-winetricks-\(UUID().uuidString).sh")
         let scriptContents = """
         #!/bin/zsh
-        \(preKillPrefix)
-        PATH="\(escapedPathPrefix):$PATH"
+        WINEPREFIX="\(escapedPrefixPath)"
         WINE="\(shellEscapedForDoubleQuotes(runtime.wine.path(percentEncoded: false)))"
         WINESERVER="\(shellEscapedForDoubleQuotes(runtime.wineserver.path(percentEncoded: false)))"
-        WINEPREFIX="\(shellEscapedForDoubleQuotes(bottle.url.path))"
-        export PATH WINE WINESERVER WINEPREFIX
+        WINELOADER="$WINE"
+        PATH="\(escapedPath)"
+        export PATH WINE WINELOADER WINESERVER WINEPREFIX
+        unset VECTOR_WINE_BIN_OVERRIDE
+        unset VECTOR_WINESERVER_BIN_OVERRIDE
+        unset VECTOR_STEAM_WINE_BIN
+        unset VECTOR_STEAM_WINESERVER_BIN
+        \(shutdownCommands)
+        sleep 1
+        "$WINESERVER" -w >/dev/null 2>&1 || true
         "\(shellEscapedForDoubleQuotes(winetricksURL.path(percentEncoded: false)))" \(trimmedCommand)
+        status=$?
         rm -f -- "$0"
+        exit $status
         """
 
         do {
@@ -173,6 +167,53 @@ class Winetricks {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "$", with: "\\$")
+            .replacingOccurrences(of: "`", with: "\\`")
+    }
+
+    private static func wineserverShutdownCommands(for candidates: [URL]) -> String {
+        candidates.map { wineserverURL in
+            let path = shellEscapedForDoubleQuotes(wineserverURL.path(percentEncoded: false))
+            return """
+            if [ -x "\(path)" ]; then
+                "\(path)" -k >/dev/null 2>&1 || true
+                "\(path)" -w >/dev/null 2>&1 || true
+            fi
+            """
+        }
+        .joined(separator: "\n")
+    }
+
+    private static func wineserverCandidates(selected: URL, bottle: Bottle) -> [URL] {
+        var candidates = [
+            VectorWineInstaller.binFolder.appending(path: "wineserver")
+        ]
+
+        if let compatibilityWineserver = VectorWineInstaller.steamCompatibilityWineserverBinary() {
+            candidates.append(compatibilityWineserver)
+        }
+
+        if let crossOverWineserver = VectorWineInstaller.crossOverWineserverBinary() {
+            candidates.append(crossOverWineserver)
+        }
+
+        let customWineserverPath = bottle.settings.customWineserverBinaryPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !customWineserverPath.isEmpty {
+            candidates.append(URL(filePath: customWineserverPath))
+        }
+
+        candidates.append(selected)
+
+        var seenPaths = Set<String>()
+        return candidates.filter { url in
+            let path = url.path(percentEncoded: false)
+            guard !path.isEmpty, !seenPaths.contains(path) else {
+                return false
+            }
+            seenPaths.insert(path)
+            return true
+        }
     }
 
     private static func resolveRuntimeBinaries(for bottle: Bottle) -> (wine: URL, wineserver: URL) {
