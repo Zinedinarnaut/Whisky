@@ -1359,8 +1359,8 @@ struct ConfigView: View {
             await MainActor.run {
                 snapshotMessage =
                     "Minecraft Dungeons auth reset: \(notes.joined(separator: ". ")). " +
-                    "If the Microsoft warning page still appears, verify the account once in the Xbox app or " +
-                    "Minecraft Launcher, then rerun this repair."
+                    "If the Microsoft warning page still appears, the remaining blocker is likely the Windows Xbox " +
+                    "Identity/Gaming Services handoff. Verify the account once in the Xbox app or Minecraft Launcher."
                 snapshotInFlight = false
             }
         }
@@ -3011,9 +3011,16 @@ private enum MissingDependencyDetector {
 
         if isMinecraftDungeonsBottle {
             let missingWebViewRuntime = !hasWebView2Runtime
-            if hasMinecraftDungeonsSignInLoop || missingWebViewRuntime || hasWebAuthIssue {
+            let missingXboxServices = missingXboxIdentityServiceNames(in: bottle)
+            let xboxIdentityLayerUnavailable = !missingXboxServices.isEmpty && hasWebView2Runtime
+            if hasMinecraftDungeonsSignInLoop
+                || missingWebViewRuntime
+                || hasWebAuthIssue
+                || xboxIdentityLayerUnavailable {
                 let detail: String
-                if hasMinecraftDungeonsSignInLoop {
+                if hasMinecraftDungeonsSignInLoop && !missingXboxServices.isEmpty {
+                    detail = minecraftDungeonsXboxIdentityDetail(missingServices: missingXboxServices)
+                } else if hasMinecraftDungeonsSignInLoop {
                     detail =
                         """
                         Detected the Microsoft callback loop. Repair will install WebView2, clear Dungeons web auth \
@@ -3021,6 +3028,8 @@ private enum MissingDependencyDetector {
                         """
                 } else if missingWebViewRuntime {
                     detail = "Edge WebView2 runtime is missing for Minecraft Dungeons sign-in in this bottle."
+                } else if xboxIdentityLayerUnavailable {
+                    detail = minecraftDungeonsXboxIdentityDetail(missingServices: missingXboxServices)
                 } else {
                     detail = "Runs the Microsoft sign-in repair flow (WebView2 + auth cache reset) for this title."
                 }
@@ -3037,6 +3046,35 @@ private enum MissingDependencyDetector {
         }
 
         return fixes
+    }
+
+    private static func minecraftDungeonsXboxIdentityDetail(missingServices: [String]) -> String {
+        let services = missingServices.prefix(4).joined(separator: ", ")
+        return """
+        The Microsoft web login is likely reaching the Xbox handoff, but this Wine prefix does not expose the Windows \
+        Xbox Identity/Gaming Services layer (\(services)). Vector can reset cached tokens and callback handlers, but \
+        the real Microsoft Store/Xbox services layer cannot be installed automatically in Wine yet.
+        """
+    }
+
+    private static func missingXboxIdentityServiceNames(in bottle: Bottle) -> [String] {
+        let expectedServices = [
+            "GamingServices",
+            "GamingServicesNet",
+            "XblAuthManager",
+            "XblGameSave",
+            "XboxGipSvc",
+            "XboxNetApiSvc"
+        ]
+        let systemRegistryURL = bottle.url.appending(path: "system.reg")
+        guard let contents = try? String(contentsOf: systemRegistryURL, encoding: .utf8).lowercased() else {
+            return expectedServices
+        }
+
+        return expectedServices.filter { service in
+            let registryKey = #"system\\currentcontrolset\\services\\"# + service.lowercased()
+            return !contents.contains(registryKey)
+        }
     }
 
     private static func expectsDXVK(for bottle: Bottle) -> Bool {
