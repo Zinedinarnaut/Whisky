@@ -384,6 +384,18 @@ extension Program {
         writeSteamWebHelperCleanupMarker()
     }
 
+    func ensureSteamClientBuiltinsForGameD3DOverrides(environment: [String: String]) async {
+        for executableName in ["steam.exe", "steamwebhelper.exe"] {
+            let dllOverridesKey = "HKCU\\Software\\Wine\\AppDefaults\\\(executableName)\\DllOverrides"
+            await applyAppDefaultDLLOverrides(
+                registryKey: dllOverridesKey,
+                dlls: Self.steamWebHelperBuiltinDLLs,
+                value: "builtin",
+                environment: environment
+            )
+        }
+    }
+
     func ensureGlobalMediaPlaybackDefaults(environment: [String: String]) async {
         // Keep media fixes process-scoped. Persistent global media overrides
         // destabilize launchers such as Steam because Wine reads this key for
@@ -446,7 +458,7 @@ extension Program {
             return
         }
         await ensureMinecraftDungeonsProtocolBridge(environment: environment)
-        guard !hasMinecraftDungeonsAppDefaultsMarker() else {
+        if hasMinecraftDungeonsAppDefaultsMarker(), minecraftDungeonsAppDefaultsLookCurrent() {
             return
         }
 
@@ -698,7 +710,7 @@ extension Program {
     }
 
     private func ensureMinecraftDungeonsProtocolBridge(environment: [String: String]) async {
-        guard !hasMinecraftDungeonsProtocolBridgeMarker() else {
+        if hasMinecraftDungeonsProtocolBridgeMarker(), minecraftDungeonsProtocolBridgeLooksCurrent() {
             return
         }
 

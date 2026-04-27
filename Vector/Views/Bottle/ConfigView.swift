@@ -2628,7 +2628,7 @@ struct ConfigView: View {
 
     private func applyD3D11GameBaseSettings() {
         bottle.settings.runtimeSelection = .auto
-        bottle.settings.graphicsBackendMode = .d3dMetal
+        bottle.settings.graphicsBackendMode = .dxvk
         bottle.settings.dxvk = true
         bottle.settings.dxvkAsync = true
         bottle.settings.shaderCacheEnabled = true

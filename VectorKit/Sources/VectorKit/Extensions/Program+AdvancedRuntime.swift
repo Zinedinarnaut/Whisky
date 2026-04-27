@@ -893,9 +893,16 @@ bCEFGPUAcceleration=False
             environment["PROTON_ENABLE_NVAPI"] = "0"
         }
         if shouldApplyMinecraftDungeonsSteamEnvironmentOverrides(activeSteamAppID: activeSteamAppID) {
-            // Keep Minecraft Dungeons overrides app-scoped through AppDefaults.
+            // Minecraft Dungeons is commonly launched from inside Steam, so the
+            // child process may not receive Vector's per-executable profile.
+            // Keep a DXVK D3D11 route in the Steam environment and protect
+            // steamwebhelper.exe through AppDefaults before launch.
             environment["DXVK_ENABLE_NVAPI"] = "0"
             environment["PROTON_ENABLE_NVAPI"] = "0"
+            environment["DXVK_ASYNC"] = "1"
+            environment[Self.effectiveBackendEnvironmentKey] = GraphicsBackendMode.dxvk.rawValue
+            environment[Self.effectiveFallbackBackendEnvironmentKey] = GraphicsBackendMode.wined3d.rawValue
+            environment.removeValue(forKey: "VECTOR_FORCE_DISABLE_DXVK")
 
             if allowsCompatibilityRuntimeOverride,
                let compatibilityWine = VectorWineInstaller.steamCompatibilityWineBinary(),
@@ -922,6 +929,7 @@ bCEFGPUAcceleration=False
             }
             environment.removeValue(forKey: Self.mediaPlaybackPatchEnvironmentKey)
             applyProtonStyleMediaMarkers(to: &environment)
+            applyMinecraftDungeonsDLLOverrides(to: &environment)
         }
         if shouldApplyContentWarningSteamEnvironmentOverrides(activeSteamAppID: activeSteamAppID) {
             // Keep Content Warning overrides app-scoped through AppDefaults.

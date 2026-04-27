@@ -630,7 +630,12 @@ extension Program {
     }
 
     private func runSteamInWine(arguments: [String], environment: [String: String]) async throws {
-        await clearSteamWebHelperBuiltinsIfNeeded(environment: environment)
+        let activeSteamAppID = bottle.settings.activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if shouldApplyMinecraftDungeonsCompatibility(activeSteamAppID: activeSteamAppID) {
+            await ensureSteamClientBuiltinsForGameD3DOverrides(environment: environment)
+        } else {
+            await clearSteamWebHelperBuiltinsIfNeeded(environment: environment)
+        }
         await ensureGlobalMediaPlaybackDefaults(environment: environment)
         await ensureHighOnLife2AppDefaults(environment: environment)
         await ensureParcelSimulatorAppDefaults(environment: environment)
