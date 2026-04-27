@@ -1339,11 +1339,14 @@ struct ConfigView: View {
         }
         let targetBottle = bottle
         bottle.settings.steamResetHTMLCacheOnLaunch = true
-        clearMinecraftDungeonsAuthWebCache()
+        let deletedCacheItems = clearMinecraftDungeonsAuthWebCache()
         clearSteamHTMLCacheResetMarker()
         snapshotInFlight = true
         Task.detached(priority: .userInitiated) {
             var notes: [String] = []
+            if deletedCacheItems > 0 {
+                notes.append("cleared \(deletedCacheItems) embedded browser auth cache items")
+            }
             do {
                 let result = try await WebView2RuntimeInstaller.installIfNeeded(for: targetBottle)
                 notes.append(result.note)
@@ -1354,14 +1357,18 @@ struct ConfigView: View {
             let authNotes = await Self.refreshMinecraftDungeonsMicrosoftAuthState(for: targetBottle)
             notes.append(contentsOf: authNotes)
             await MainActor.run {
-                snapshotMessage = "Minecraft Dungeons auth reset: \(notes.joined(separator: ". "))."
+                snapshotMessage =
+                    "Minecraft Dungeons auth reset: \(notes.joined(separator: ". ")). " +
+                    "If the Microsoft warning page still appears, verify the account once in the Xbox app or " +
+                    "Minecraft Launcher, then rerun this repair."
                 snapshotInFlight = false
             }
         }
         snapshotMessage = "Repairing Microsoft sign-in (downloading WebView2 runtime + Xbox auth reset + callback bridge)."
     }
 
-    private func clearMinecraftDungeonsAuthWebCache() {
+    @discardableResult
+    private func clearMinecraftDungeonsAuthWebCache() -> Int {
         let usersRoot = bottle.url
             .appending(path: "drive_c")
             .appending(path: "users")
@@ -1370,9 +1377,10 @@ struct ConfigView: View {
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         ) else {
-            return
+            return 0
         }
 
+        var removedCount = 0
         for user in users {
             let candidateRoots = [
                 user
@@ -1387,30 +1395,57 @@ struct ConfigView: View {
             ]
 
             for root in candidateRoots {
-                guard FileManager.default.fileExists(atPath: root.path(percentEncoded: false)),
-                      let enumerator = FileManager.default.enumerator(
-                          at: root,
-                          includingPropertiesForKeys: [.isDirectoryKey],
-                          options: [.skipsHiddenFiles]
-                      ) else {
-                    continue
-                }
-
-                for case let entryURL as URL in enumerator {
-                    let name = entryURL.lastPathComponent.lowercased()
-                    guard name.hasPrefix("webcache") else {
-                        continue
-                    }
-                    do {
-                        try FileManager.default.removeItem(at: entryURL)
-                    } catch {
-                        Logger.wineKit.warning(
-                            "Failed to remove Minecraft Dungeons auth cache at \(entryURL.path(percentEncoded: false), privacy: .public)"
-                        )
-                    }
-                }
+                removedCount += removeMinecraftDungeonsAuthCacheItems(in: root)
             }
         }
+
+        return removedCount
+    }
+
+    private func removeMinecraftDungeonsAuthCacheItems(in root: URL) -> Int {
+        guard FileManager.default.fileExists(atPath: root.path(percentEncoded: false)),
+              let enumerator = FileManager.default.enumerator(
+                  at: root,
+                  includingPropertiesForKeys: [.isDirectoryKey],
+                  options: []
+              ) else {
+            return 0
+        }
+
+        var targets: [URL] = []
+        for case let entryURL as URL in enumerator {
+            let path = entryURL.path(percentEncoded: false).lowercased()
+            let name = entryURL.lastPathComponent.lowercased()
+            guard name.hasPrefix("webcache")
+                || path.contains("/saved/webcache")
+                || path.contains("/saved/webview")
+                || path.contains("/saved/cef")
+                || path.contains("/local storage/https_login.live.com")
+                || path.contains("/local storage/https_account.live.com")
+                || path.contains("/local storage/https_sisu.xboxlive.com")
+                || path.contains("/local storage/https_df.cfp.microsoft.com") else {
+                continue
+            }
+            targets.append(entryURL)
+        }
+
+        var removedCount = 0
+        for target in targets.sorted(by: { $0.pathComponents.count > $1.pathComponents.count }) {
+            do {
+                try FileManager.default.removeItem(at: target)
+                removedCount += 1
+            } catch {
+                Logger.wineKit.warning(
+                    """
+                    Failed to remove Minecraft Dungeons auth cache at \
+                    \(target.path(percentEncoded: false), privacy: .public): \
+                    \(error.localizedDescription, privacy: .public)
+                    """
+                )
+            }
+        }
+
+        return removedCount
     }
 
     private func clearSteamHTMLCacheResetMarker() {
@@ -1467,11 +1502,14 @@ struct ConfigView: View {
         let keys = contents
             .split(whereSeparator: \.isNewline)
             .compactMap { line -> String? in
-                guard line.hasPrefix("[Software\\\\Wine\\\\Credential Manager\\\\Generic: Xbl|"),
+                guard line.hasPrefix("[Software\\\\Wine\\\\Credential Manager\\\\"),
                       let endIndex = line.firstIndex(of: "]") else {
                     return nil
                 }
                 let key = line[line.index(after: line.startIndex)..<endIndex]
+                guard isMinecraftDungeonsMicrosoftCredentialKey(String(key)) else {
+                    return nil
+                }
                 return "HKCU\\\(key.replacingOccurrences(of: #"\\\\"#, with: #"\"#))"
             }
 
@@ -1492,6 +1530,19 @@ struct ConfigView: View {
         }
 
         return deletedCount
+    }
+
+    private static func isMinecraftDungeonsMicrosoftCredentialKey(_ key: String) -> Bool {
+        let normalized = key.lowercased()
+        return normalized.contains(#"credential manager\\generic: xbl|"#)
+            || normalized.contains(#"credential manager\\generic: xbl_ticket|"#)
+            || normalized.contains(#"credential manager\\generic: xbox"#)
+            || normalized.contains(#"credential manager\\generic: minecraft"#)
+            || normalized.contains(#"credential manager\\generic: msa"#)
+            || normalized.contains(#"credential manager\\generic: microsoftaccount"#)
+            || normalized.contains(#"credential manager\\generic: https://login.live.com"#)
+            || normalized.contains(#"credential manager\\generic: https://account.live.com"#)
+            || normalized.contains(#"credential manager\\generic: https://sisu.xboxlive.com"#)
     }
 
     private static func registerMinecraftDungeonsProtocolHandlers(in bottle: Bottle) async -> Int {
@@ -2018,12 +2069,16 @@ struct ConfigView: View {
             }
 
             if plan.resetMinecraftAuthCaches {
-                await MainActor.run {
+                let deletedCacheItems = await MainActor.run {
                     targetBottle.settings.steamResetHTMLCacheOnLaunch = true
-                    clearMinecraftDungeonsAuthWebCache()
+                    let deletedItems = clearMinecraftDungeonsAuthWebCache()
                     clearSteamHTMLCacheResetMarker()
+                    return deletedItems
                 }
                 let authNotes = await Self.refreshMinecraftDungeonsMicrosoftAuthState(for: targetBottle)
+                if deletedCacheItems > 0 {
+                    repairNotes.append("cleared \(deletedCacheItems) Minecraft Dungeons auth cache items")
+                }
                 if authNotes.isEmpty {
                     repairNotes.append("reset cached Microsoft auth web data")
                 } else {
@@ -2960,7 +3015,10 @@ private enum MissingDependencyDetector {
                 let detail: String
                 if hasMinecraftDungeonsSignInLoop {
                     detail =
-                        "Detected Microsoft callback loop. Repair will install WebView2 and reset stale auth web cache."
+                        """
+                        Detected the Microsoft callback loop. Repair will install WebView2, clear Dungeons web auth \
+                        cache, reset Xbox tickets, and rebuild callback handlers.
+                        """
                 } else if missingWebViewRuntime {
                     detail = "Edge WebView2 runtime is missing for Minecraft Dungeons sign-in in this bottle."
                 } else {
@@ -2972,7 +3030,7 @@ private enum MissingDependencyDetector {
                         id: .minecraftDungeonsSignInLoop,
                         title: "Minecraft Dungeons Microsoft Sign-In Repair",
                         detail: detail,
-                        actionTitle: "Repair Microsoft Sign-In"
+                        actionTitle: "Hard Reset Sign-In"
                     )
                 )
             }
