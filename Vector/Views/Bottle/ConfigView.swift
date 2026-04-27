@@ -1349,8 +1349,6 @@ struct ConfigView: View {
                 notes.append(result.note)
             } catch {
                 notes.append("WebView2 automatic install failed: \(error.localizedDescription)")
-                await Winetricks.runCommand(command: "edgewebview2", bottle: targetBottle)
-                notes.append("started Winetricks WebView2 fallback")
             }
 
             let authNotes = await Self.refreshMinecraftDungeonsMicrosoftAuthState(for: targetBottle)
@@ -2008,8 +2006,6 @@ struct ConfigView: View {
                     repairNotes.append(result.note)
                 } catch {
                     repairNotes.append("WebView2 automatic install failed: \(error.localizedDescription)")
-                    await Winetricks.runCommand(command: "edgewebview2", bottle: targetBottle)
-                    repairNotes.append("started Winetricks WebView2 fallback")
                 }
             }
 

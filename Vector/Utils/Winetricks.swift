@@ -81,9 +81,9 @@ class Winetricks {
         sleep 1
         "$WINESERVER" -w >/dev/null 2>&1 || true
         "\(shellEscapedForDoubleQuotes(winetricksURL.path(percentEncoded: false)))" \(trimmedCommand)
-        status=$?
+        vector_winetricks_status=$?
         rm -f -- "$0"
-        exit $status
+        exit $vector_winetricks_status
         """
 
         do {
