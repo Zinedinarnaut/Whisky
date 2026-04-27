@@ -1338,20 +1338,29 @@ struct ConfigView: View {
             bottle.settings.customWineserverBinaryPath = ""
         }
         let targetBottle = bottle
-        runWinetricksPreset("edgewebview2")
         bottle.settings.steamResetHTMLCacheOnLaunch = true
         clearMinecraftDungeonsAuthWebCache()
         clearSteamHTMLCacheResetMarker()
+        snapshotInFlight = true
         Task.detached(priority: .userInitiated) {
-            let notes = await Self.refreshMinecraftDungeonsMicrosoftAuthState(for: targetBottle)
-            guard !notes.isEmpty else {
-                return
+            var notes: [String] = []
+            do {
+                let result = try await WebView2RuntimeInstaller.installIfNeeded(for: targetBottle)
+                notes.append(result.note)
+            } catch {
+                notes.append("WebView2 automatic install failed: \(error.localizedDescription)")
+                await Winetricks.runCommand(command: "edgewebview2", bottle: targetBottle)
+                notes.append("started Winetricks WebView2 fallback")
             }
+
+            let authNotes = await Self.refreshMinecraftDungeonsMicrosoftAuthState(for: targetBottle)
+            notes.append(contentsOf: authNotes)
             await MainActor.run {
                 snapshotMessage = "Minecraft Dungeons auth reset: \(notes.joined(separator: ". "))."
+                snapshotInFlight = false
             }
         }
-        snapshotMessage = "Started Microsoft sign-in repair (compat runtime + WebView2 + Xbox auth reset + callback bridge + auth cache reset)."
+        snapshotMessage = "Repairing Microsoft sign-in (downloading WebView2 runtime + Xbox auth reset + callback bridge)."
     }
 
     private func clearMinecraftDungeonsAuthWebCache() {
@@ -1990,6 +1999,17 @@ struct ConfigView: View {
                     repairNotes.append(
                         "reset cached Microsoft auth web data and \(authNotes.joined(separator: ", "))"
                     )
+                }
+            }
+
+            if plan.installEdgeWebView2Runtime {
+                do {
+                    let result = try await WebView2RuntimeInstaller.installIfNeeded(for: targetBottle)
+                    repairNotes.append(result.note)
+                } catch {
+                    repairNotes.append("WebView2 automatic install failed: \(error.localizedDescription)")
+                    await Winetricks.runCommand(command: "edgewebview2", bottle: targetBottle)
+                    repairNotes.append("started Winetricks WebView2 fallback")
                 }
             }
 
@@ -2649,6 +2669,7 @@ private struct DependencyRepairPlan: Sendable {
     let enableDLSSRuntimeTranslation: Bool
     let enableMediaPlaybackCompatibility: Bool
     let resetMinecraftAuthCaches: Bool
+    let installEdgeWebView2Runtime: Bool
     let winetricksVerbs: [String]
 
     init(fixIDs: Set<MissingDependencyFixID>, includeRuntimeDLLRepair: Bool) {
@@ -2661,6 +2682,8 @@ private struct DependencyRepairPlan: Sendable {
         self.enableDLSSRuntimeTranslation = fixIDs.contains(.dlssPayload)
         self.enableMediaPlaybackCompatibility = fixIDs.contains(.mediaPlayback)
         self.resetMinecraftAuthCaches = fixIDs.contains(.minecraftDungeonsSignInLoop)
+        self.installEdgeWebView2Runtime = fixIDs.contains(.edgeWebView2Auth)
+            || fixIDs.contains(.minecraftDungeonsSignInLoop)
 
         var verbs: [String] = []
         Self.appendIfNeeded("dotnet48", to: &verbs, when: fixIDs.contains(.dotNet))
@@ -2673,11 +2696,6 @@ private struct DependencyRepairPlan: Sendable {
         Self.appendIfNeeded("quartz", to: &verbs, when: fixIDs.contains(.mediaPlayback))
         Self.appendIfNeeded("l3codecx", to: &verbs, when: fixIDs.contains(.mediaPlayback))
         Self.appendIfNeeded("devenum", to: &verbs, when: fixIDs.contains(.mediaPlayback))
-        Self.appendIfNeeded(
-            "edgewebview2",
-            to: &verbs,
-            when: fixIDs.contains(.edgeWebView2Auth) || fixIDs.contains(.minecraftDungeonsSignInLoop)
-        )
         self.winetricksVerbs = verbs
     }
 
@@ -2689,6 +2707,7 @@ private struct DependencyRepairPlan: Sendable {
             && !enableDLSSRuntimeTranslation
             && !enableMediaPlaybackCompatibility
             && !resetMinecraftAuthCaches
+            && !installEdgeWebView2Runtime
             && winetricksVerbs.isEmpty
     }
 
@@ -2744,7 +2763,7 @@ private enum MissingDependencyDetector {
         let combinedLog = latestBottleLogs(for: bottle).joined(separator: "\n")
         var fixes: [MissingDependencyFix] = []
         let runtimeMirrorHealth = inspectRuntimeDLLMirror(for: bottle)
-        let hasWebView2Runtime = hasEdgeWebView2Runtime(in: bottle)
+        let hasWebView2Runtime = WebView2RuntimeInstaller.hasRuntime(in: bottle)
         let hasDotNetRuntime = hasDotNetRuntime(in: bottle)
         let hasVisualCppRuntime = hasVisualCppRuntime(in: bottle)
         let missingMediaComponents = missingMediaPlaybackDLLs(in: bottle)
@@ -3127,33 +3146,6 @@ private enum MissingDependencyDetector {
         let digest = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
         cache[path] = digest
         return digest
-    }
-
-    private static func hasEdgeWebView2Runtime(in bottle: Bottle) -> Bool {
-        let bottleRoot = bottle.url
-        let candidates = [
-            bottleRoot
-                .appending(path: "drive_c")
-                .appending(path: "Program Files (x86)")
-                .appending(path: "Microsoft")
-                .appending(path: "EdgeWebView")
-                .appending(path: "Application"),
-            bottleRoot
-                .appending(path: "drive_c")
-                .appending(path: "Program Files")
-                .appending(path: "Microsoft")
-                .appending(path: "EdgeWebView")
-                .appending(path: "Application"),
-            bottleRoot
-                .appending(path: "drive_c")
-                .appending(path: "windows")
-                .appending(path: "system32")
-                .appending(path: "WebView2Loader.dll")
-        ]
-
-        return candidates.contains {
-            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
-        }
     }
 
     private static func latestBottleLogs(for bottle: Bottle) -> [String] {

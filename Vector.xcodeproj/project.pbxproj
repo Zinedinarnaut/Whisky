@@ -46,6 +46,7 @@
 		6E7C07C02AAF570100F6E66B /* FileOpenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E7C07BF2AAF570100F6E66B /* FileOpenView.swift */; };
 		6ECA00012D00000100000001 /* CompatibilityDatabaseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ECA00022D00000100000002 /* CompatibilityDatabaseView.swift */; };
 		6ECA00032D00000100000003 /* CompatibilityRatingBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ECA00042D00000100000004 /* CompatibilityRatingBadge.swift */; };
+		6ECA00052D00000200000005 /* WebView2RuntimeInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ECA00062D00000200000006 /* WebView2RuntimeInstaller.swift */; };
 		6E95F66D2AB3EF3A00D585D1 /* VectorCmd in Embed VectorCmd */ = {isa = PBXBuildFile; fileRef = 6E70A4982A9A2197007799E9 /* VectorCmd */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		6E95F6702AB3F33C00D585D1 /* SwiftyTextTable in Frameworks */ = {isa = PBXBuildFile; productRef = 6E95F66F2AB3F33C00D585D1 /* SwiftyTextTable */; };
 		6E95F6732AB3F67200D585D1 /* Progress in Frameworks */ = {isa = PBXBuildFile; productRef = 6E95F6722AB3F67200D585D1 /* Progress */; };
@@ -155,6 +156,7 @@
 		6E7C07BF2AAF570100F6E66B /* FileOpenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOpenView.swift; sourceTree = "<group>"; };
 		6ECA00022D00000100000002 /* CompatibilityDatabaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompatibilityDatabaseView.swift; sourceTree = "<group>"; };
 		6ECA00042D00000100000004 /* CompatibilityRatingBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompatibilityRatingBadge.swift; sourceTree = "<group>"; };
+		6ECA00062D00000200000006 /* WebView2RuntimeInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView2RuntimeInstaller.swift; sourceTree = "<group>"; };
 		6E899D1129CFC41D00A4A083 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6EB58AC82AEACE5E00B1ED3F /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		6EF557972A410599001A4F09 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
@@ -365,6 +367,7 @@
 				6E70A4A02A9A280C007799E9 /* VectorCmd.swift */,
 				6E7C07BD2AAE7B0100F6E66B /* ProgramShortcut.swift */,
 				6763D8F52BC6314100651D27 /* Constants.swift */,
+				6ECA00062D00000200000006 /* WebView2RuntimeInstaller.swift */,
 			);
 			path = Utils;
 			sourceTree = "<group>";
@@ -645,6 +648,7 @@
 				6E7C07C02AAF570100F6E66B /* FileOpenView.swift in Sources */,
 				6ECA00012D00000100000001 /* CompatibilityDatabaseView.swift in Sources */,
 				6ECA00032D00000100000003 /* CompatibilityRatingBadge.swift in Sources */,
+				6ECA00052D00000200000005 /* WebView2RuntimeInstaller.swift in Sources */,
 				6E6C0CF22A419A6800356232 /* WelcomeView.swift in Sources */,
 				6E40498129CCA8B0006E3F1B /* BottleView.swift in Sources */,
 				6E355E5E29D7D85D002D83BE /* ProgramView.swift in Sources */,
