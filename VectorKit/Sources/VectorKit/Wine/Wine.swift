@@ -24,6 +24,8 @@ import os.log
 public class Wine {
     private static let wineBinaryOverrideEnvironmentKey = "VECTOR_WINE_BIN_OVERRIDE"
     private static let wineserverBinaryOverrideEnvironmentKey = "VECTOR_WINESERVER_BIN_OVERRIDE"
+    static let steamGraphicsIsolationEnvKey =
+        "VECTOR_STEAM_CLIENT_DISABLE_GRAPHICS_OVERRIDES"
     private static let dxmtNVExtensionsEnvironmentKey = "DXMT_ENABLE_NVEXT"
     private static let dlssTranslationMarkerEnvironmentKey = "VECTOR_DLSS_TRANSLATION_ACTIVE"
     private static let wineDebugLevelDefaultsKey = "wineDebugLevel"
@@ -67,6 +69,17 @@ public class Wine {
         return url
     }()
     private static let dxmtInstallCoordinator = DXMTPayloadInstallCoordinator()
+    private static let steamClientGraphicsDLLOverrideNames: Set<String> = [
+        "dxgi",
+        "d3d9",
+        "d3d10",
+        "d3d10core",
+        "d3d11",
+        "d3d12",
+        "d3d12core",
+        "nvapi",
+        "nvapi64"
+    ]
 
     /// URL to the installed `DXVK` folder
     private static let dxvkFolder: URL = VectorWineInstaller.libraryFolder.appending(path: "DXVK")
@@ -964,8 +977,60 @@ public class Wine {
         if !environment.isEmpty {
             result.merge(environment, uniquingKeysWith: { $1 })
         }
+        applySteamClientGraphicsOverrideIsolation(to: &result)
         applyPerformanceDefaults(for: bottle, environment: &result)
         return result
+    }
+
+    private static func applySteamClientGraphicsOverrideIsolation(to environment: inout [String: String]) {
+        defer {
+            environment.removeValue(forKey: steamGraphicsIsolationEnvKey)
+        }
+
+        guard let rawValue = environment[steamGraphicsIsolationEnvKey],
+              isTruthyEnvironmentValue(rawValue) else {
+            return
+        }
+
+        let sanitizedOverrides = stripDLLOverrideGroups(
+            from: environment["WINEDLLOVERRIDES"],
+            containingAny: steamClientGraphicsDLLOverrideNames
+        )
+        if sanitizedOverrides.isEmpty {
+            environment.removeValue(forKey: "WINEDLLOVERRIDES")
+        } else {
+            environment["WINEDLLOVERRIDES"] = sanitizedOverrides
+        }
+    }
+
+    private static func stripDLLOverrideGroups(
+        from overrides: String?,
+        containingAny blockedNames: Set<String>
+    ) -> String {
+        guard let overrides,
+              !overrides.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ""
+        }
+
+        return overrides
+            .split(separator: ";")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { group in
+                !dllOverrideGroup(group, containsAny: blockedNames)
+            }
+            .joined(separator: ";")
+    }
+
+    private static func dllOverrideGroup(_ group: String, containsAny blockedNames: Set<String>) -> Bool {
+        guard let equalsIndex = group.firstIndex(of: "=") else {
+            return false
+        }
+
+        let dllNames = group[..<equalsIndex]
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+
+        return dllNames.contains { blockedNames.contains($0) }
     }
 
     /// Construct an environment merging the bottle values with the given values

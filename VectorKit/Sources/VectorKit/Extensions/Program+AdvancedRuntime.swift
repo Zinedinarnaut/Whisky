@@ -24,7 +24,6 @@ extension Program {
     private static let runtimeWineOverrideEnvironmentKey = "VECTOR_WINE_BIN_OVERRIDE"
     private static let runtimeWineserverOverrideEnvironmentKey = "VECTOR_WINESERVER_BIN_OVERRIDE"
     private static let steamExecutableName = "steam.exe"
-    private static let steamClientSafeDLLOverrides = "nvapi,nvapi64=d"
     private static let steamUsersDirectoryName = "userdata"
     private static let steamUserLocalConfigSuffix = "config/localconfig.vdf"
     private static let highOnLife2SteamAppID = "2069250"
@@ -1044,13 +1043,14 @@ bCEFGPUAcceleration=False
         environment["DXVK_HUD"] = "0"
         environment["DXVK_LOG_LEVEL"] = "none"
         environment["VECTOR_FORCE_DISABLE_DXVK"] = "1"
+        environment[Wine.steamGraphicsIsolationEnvKey] = "1"
         environment.removeValue(forKey: Self.effectiveBackendEnvironmentKey)
         environment.removeValue(forKey: Self.effectiveFallbackBackendEnvironmentKey)
         if shouldPreserveGraphicsPipeline {
-            environment["WINEDLLOVERRIDES"] = Self.steamClientSafeDLLOverrides
+            environment.removeValue(forKey: "WINEDLLOVERRIDES")
             environment.removeValue(forKey: "ROSETTA_ADVERTISE_AVX")
         } else {
-            environment["WINEDLLOVERRIDES"] = ""
+            environment.removeValue(forKey: "WINEDLLOVERRIDES")
             environment["ROSETTA_ADVERTISE_AVX"] = "0"
         }
     }
