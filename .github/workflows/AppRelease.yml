@@ -1,0 +1,201 @@
+name: App Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Vector version, for example 2.6.0"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub release as prerelease"
+        required: false
+        default: true
+        type: boolean
+      channel:
+        description: "Release channel metadata"
+        required: false
+        default: "preview"
+        type: choice
+        options:
+          - stable
+          - preview
+          - lab
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  app-release:
+    name: Build and publish Vector app artefacts
+    runs-on: macos-latest
+    env:
+      DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            CHANNEL="${{ inputs.channel }}"
+            PRERELEASE="${{ inputs.prerelease }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            CHANNEL="stable"
+            PRERELEASE="false"
+          fi
+
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Vector app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project Vector.xcodeproj \
+            -scheme Vector \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Import signing certificate
+        if: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.DEVELOPER_ID_APPLICATION != '' }}
+        shell: bash
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/vector-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/vector-signing.p12"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "${KEYCHAIN_PASSWORD:-vector-ci}" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD:-vector-ci}" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD:-vector-ci}" "$KEYCHAIN_PATH"
+
+      - name: Prepare artefacts
+        id: artefacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -maxdepth 2 -name 'Vector.app' -type d | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Vector.app was not produced"
+            exit 1
+          fi
+
+          mkdir -p dist/dmg-root
+          ditto "$APP_PATH" "dist/dmg-root/Vector.app"
+          SIGNING_STATE="unsigned-ci-build"
+          if [ -n "${DEVELOPER_ID_APPLICATION}" ]; then
+            codesign --force --deep --options runtime --timestamp --sign "${DEVELOPER_ID_APPLICATION}" "dist/dmg-root/Vector.app"
+            SIGNING_STATE="developer-id-signed"
+          fi
+          ditto -c -k --keepParent "dist/dmg-root/Vector.app" "dist/Vector.zip"
+          hdiutil create \
+            -volname "Vector" \
+            -srcfolder "dist/dmg-root" \
+            -ov \
+            -format UDZO \
+            "dist/Vector.dmg"
+
+          if [ "${SIGNING_STATE}" = "developer-id-signed" ]; then
+            codesign --force --timestamp --sign "${DEVELOPER_ID_APPLICATION}" "dist/Vector.dmg"
+          fi
+
+          ZIP_SHA="$(shasum -a 256 dist/Vector.zip | awk '{print $1}')"
+          DMG_SHA="$(shasum -a 256 dist/Vector.dmg | awk '{print $1}')"
+          ZIP_SIZE="$(stat -f%z dist/Vector.zip)"
+          DMG_SIZE="$(stat -f%z dist/Vector.dmg)"
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          cat > dist/manifest.json <<JSON
+          {
+            "name": "Vector",
+            "version": "${{ steps.release.outputs.version }}",
+            "channel": "${{ steps.release.outputs.channel }}",
+            "tag": "${{ steps.release.outputs.tag }}",
+            "commit": "${GITHUB_SHA}",
+            "built_at": "${BUILD_DATE}",
+            "platform": "macOS",
+            "minimum_macos": "14.0",
+            "code_signing": "${SIGNING_STATE}",
+            "artifacts": [
+              {
+                "name": "Vector.zip",
+                "kind": "app-zip",
+                "sha256": "${ZIP_SHA}",
+                "size": ${ZIP_SIZE}
+              },
+              {
+                "name": "Vector.dmg",
+                "kind": "app-dmg",
+                "sha256": "${DMG_SHA}",
+                "size": ${DMG_SIZE}
+              }
+            ]
+          }
+          JSON
+
+          shasum -a 256 dist/Vector.zip dist/Vector.dmg dist/manifest.json > dist/SHA256SUMS.txt
+
+      - name: Notarize DMG
+        if: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && secrets.DEVELOPER_ID_APPLICATION != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit dist/Vector.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple dist/Vector.dmg
+          DMG_SHA="$(shasum -a 256 dist/Vector.dmg | awk '{print $1}')"
+          DMG_SIZE="$(stat -f%z dist/Vector.dmg)"
+          node - <<NODE
+          const fs = require("fs");
+          const manifest = JSON.parse(fs.readFileSync("dist/manifest.json", "utf8"));
+          manifest.code_signing = "developer-id-signed-notarized";
+          const dmg = manifest.artifacts.find((artifact) => artifact.name === "Vector.dmg");
+          dmg.sha256 = "${DMG_SHA}";
+          dmg.size = Number("${DMG_SIZE}");
+          fs.writeFileSync("dist/manifest.json", JSON.stringify(manifest, null, 2) + "\\n");
+          NODE
+          shasum -a 256 dist/Vector.dmg dist/Vector.zip dist/manifest.json > dist/SHA256SUMS.txt
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: Vector ${{ steps.release.outputs.version }}
+          prerelease: ${{ steps.release.outputs.prerelease }}
+          body: |
+            Vector ${{ steps.release.outputs.version }} app release.
+
+            Channel: `${{ steps.release.outputs.channel }}`
+
+            Assets include `Vector.dmg`, `Vector.zip`, `manifest.json`, and `SHA256SUMS.txt` for the website Distribution Centre.
+          files: |
+            dist/Vector.dmg
+            dist/Vector.zip
+            dist/manifest.json
+            dist/SHA256SUMS.txt
