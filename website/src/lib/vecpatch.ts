@@ -89,6 +89,8 @@ export type DistributionMetadata = {
   releaseUrl: string;
   sourceUrl: string;
   hasSignedApp: boolean;
+  trustLevel: "trusted" | "unsigned" | "source-only" | "unavailable";
+  trustReason: string;
   codeSigning?: string;
   assets: DistributionAsset[];
   unavailable?: boolean;
@@ -339,6 +341,7 @@ export async function getDistributionMetadata(): Promise<DistributionMetadata> {
     const assets = release.assets.map(mapReleaseAsset);
     const codeSigning = await fetchCodeSigningState(assets);
     const hasSignedApp = codeSigning?.startsWith("developer-id") ?? false;
+    const trust = releaseTrustState(assets, hasSignedApp);
 
     if (release.zipball_url) {
       assets.push({
@@ -358,6 +361,8 @@ export async function getDistributionMetadata(): Promise<DistributionMetadata> {
       releaseUrl: release.html_url,
       sourceUrl: GITHUB_REPO_URL,
       hasSignedApp,
+      trustLevel: trust.level,
+      trustReason: trust.reason,
       codeSigning,
       assets,
     };
@@ -482,6 +487,8 @@ function fallbackDistribution(): DistributionMetadata {
     releaseUrl: `${GITHUB_REPO_URL}/releases/tag/runtime-v2.5.0`,
     sourceUrl: GITHUB_REPO_URL,
     hasSignedApp: false,
+    trustLevel: "unavailable",
+    trustReason: "GitHub release metadata could not be reached.",
     unavailable: true,
     assets: [
       {
@@ -491,6 +498,27 @@ function fallbackDistribution(): DistributionMetadata {
         downloadUrl: `${GITHUB_REPO_URL}/releases`,
       },
     ],
+  };
+}
+
+function releaseTrustState(assets: DistributionAsset[], hasSignedApp: boolean) {
+  if (hasSignedApp) {
+    return {
+      level: "trusted" as const,
+      reason: "Signed macOS app artefact is published with Developer ID metadata.",
+    };
+  }
+
+  if (assets.some((asset) => asset.kind === "app")) {
+    return {
+      level: "unsigned" as const,
+      reason: "An app artefact is published, but the release manifest does not prove Developer ID signing.",
+    };
+  }
+
+  return {
+    level: "source-only" as const,
+    reason: "No app artefact is published yet; release exposes source/runtime artefacts only.",
   };
 }
 

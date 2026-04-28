@@ -62,7 +62,7 @@ export default async function DownloadPage() {
             </div>
             {!distribution.hasSignedApp ? (
               <p className="mt-4 max-w-xl text-sm leading-6 text-[var(--vector-warning)]">
-                No signed macOS app artefact is published in the current GitHub release yet. The centre is live and currently exposes runtime/source artefacts until the app pipeline publishes a DMG or ZIP.
+                {distribution.trustReason}
               </p>
             ) : null}
           </div>
@@ -81,6 +81,7 @@ export default async function DownloadPage() {
                 ["Release", distribution.tagName],
                 ["Published", formatDate(distribution.publishedAt)],
                 ["Code signing", distribution.codeSigning ?? "unknown"],
+                ["Trust", distribution.trustLevel],
                 ["VecPatch rules", String(manifest.metadata?.rule_count ?? manifest.rules.length)],
                 ["Signature mode", manifest.metadata?.signature_mode ?? "unknown"],
                 ["Dispatch commit", manifest.commit_sha?.slice(0, 12) ?? "unknown"],

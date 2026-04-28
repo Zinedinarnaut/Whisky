@@ -97,6 +97,7 @@ struct CompatibilityDatabaseView: View {
                     game.recommendedPreset.lowercased(),
                     game.recommendedArguments.lowercased(),
                     game.notes.joined(separator: " ").lowercased(),
+                    game.tags.joined(separator: " ").lowercased(),
                     game.antiCheatProvider?.lowercased() ?? "",
                     game.supportContactStatus.lowercased()
                 ].joined(separator: " ")
@@ -261,10 +262,28 @@ private struct CompatibilityGameCard: View {
                         HStack(spacing: 8) {
                             CompatibilityMetadataPill(text: game.store, icon: "bag")
                             CompatibilityMetadataPill(text: appIDText, icon: "number")
+                            CompatibilityMetadataPill(
+                                text: "\(Int(game.confidence * 100))% confidence",
+                                icon: "gauge.with.dots.needle.bottom.50percent"
+                            )
+                            CompatibilityMetadataPill(text: "Verified \(game.lastVerifiedOn)", icon: "calendar")
                         }
                     }
                     Spacer(minLength: 8)
                     CompatibilityRatingBadge(rating: game.rating)
+                }
+
+                if !game.tags.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(game.tags.prefix(4), id: \.self) { tag in
+                            Text(tag)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.62))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.white.opacity(0.04), in: Capsule())
+                        }
+                    }
                 }
 
                 if !game.recommendedArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

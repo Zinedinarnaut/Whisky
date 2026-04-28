@@ -25,11 +25,24 @@ public enum VectorLaunchDoctorFindingSeverity: String, Codable, Sendable {
     case blocked
 }
 
+public enum VectorLaunchDoctorFailureClass: String, Codable, Sendable {
+    case dxFeatureLevel
+    case dx12Unsupported
+    case wineserverMismatch
+    case missingRuntimeDependency
+    case webViewAuth
+    case mediaPlayback
+    case protectedAntiCheat
+    case steamBootstrap
+    case unknown
+}
+
 public struct VectorLaunchDoctorFinding: Codable, Identifiable, Sendable {
     public var id: String
     public var severity: VectorLaunchDoctorFindingSeverity
     public var title: String
     public var detail: String
+    public var failureClass: VectorLaunchDoctorFailureClass?
 }
 
 public struct VectorLaunchDoctorTrace: Codable, Sendable {
@@ -62,6 +75,7 @@ public enum VectorLaunchDoctor {
             bottle: bottle
         )
         appendProtectedLaunchFinding(programURL: programURL, bottle: bottle, findings: &findings)
+        findings += recentLogClassifications(for: bottle)
         writeTrace(programPath: programPath, bottle: bottle, findings: findings)
 
         return findings
@@ -91,7 +105,8 @@ private extension VectorLaunchDoctor {
                 id: "vecpatch-sync",
                 severity: .info,
                 title: "VecPatch synced",
-                detail: "Updated launch profiles before starting the game."
+                detail: "Updated launch profiles before starting the game.",
+                failureClass: .unknown
             )
         ]
     }
@@ -145,7 +160,8 @@ private extension VectorLaunchDoctor {
                     id: "minecraft-dungeons-guardrails",
                     severity: .info,
                     title: "Minecraft Dungeons guardrails",
-                    detail: "Ensured Steam/auth/media profiles are present before launch."
+                    detail: "Ensured Steam/auth/media profiles are present before launch.",
+                    failureClass: .webViewAuth
                 )
             ]
         case .contentWarning:
@@ -154,7 +170,8 @@ private extension VectorLaunchDoctor {
                     id: "content-warning-guardrails",
                     severity: .info,
                     title: "Content Warning guardrails",
-                    detail: "Ensured D3D11/media compatibility settings are active before launch."
+                    detail: "Ensured D3D11/media compatibility settings are active before launch.",
+                    failureClass: .mediaPlayback
                 )
             ]
         case .forzaHorizon6:
@@ -163,7 +180,8 @@ private extension VectorLaunchDoctor {
                     id: "forza-horizon-6-preflight",
                     severity: .warning,
                     title: "Forza Horizon 6 preflight",
-                    detail: "Prepared D3DMetal-first DX12 routing; release-build support may still vary."
+                    detail: "Prepared D3DMetal-first DX12 routing; release-build support may still vary.",
+                    failureClass: .dx12Unsupported
                 )
             ]
         }
@@ -190,7 +208,8 @@ private extension VectorLaunchDoctor {
                 id: "protected-multiplayer-block",
                 severity: .blocked,
                 title: "Protected multiplayer blocked",
-                detail: assessment.reasons.joined(separator: " ")
+                detail: assessment.reasons.joined(separator: " "),
+                failureClass: .protectedAntiCheat
             )
         )
     }
@@ -201,7 +220,7 @@ private extension VectorLaunchDoctor {
         findings: [VectorLaunchDoctorFinding]
     ) {
         let trace = VectorLaunchDoctorTrace(
-            schemaVersion: 1,
+            schemaVersion: 2,
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             programPath: programPath,
             activeSteamAppID: bottle.settings.activeSteamAppID,
@@ -227,8 +246,15 @@ private extension VectorLaunchDoctor {
         id: String,
         severity: VectorLaunchDoctorFindingSeverity,
         title: String,
-        detail: String
+        detail: String,
+        failureClass: VectorLaunchDoctorFailureClass? = nil
     ) -> VectorLaunchDoctorFinding {
-        VectorLaunchDoctorFinding(id: id, severity: severity, title: title, detail: detail)
+        VectorLaunchDoctorFinding(
+            id: id,
+            severity: severity,
+            title: title,
+            detail: detail,
+            failureClass: failureClass
+        )
     }
 }

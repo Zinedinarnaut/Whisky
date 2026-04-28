@@ -453,6 +453,15 @@ public struct DispatchPatchStatus: Sendable {
     public var lastAppliedRulesDigest: String
     public var lastAppliedAt: Date?
     public var updateAvailable: Bool
+    public var alreadyApplied: Bool {
+        let effectiveDigest = effectiveRulesDigest.trimmingCharacters(in: .whitespacesAndNewlines)
+        let appliedDigest = lastAppliedRulesDigest.trimmingCharacters(in: .whitespacesAndNewlines)
+        return dispatchEnabled
+            && !updateAvailable
+            && effectiveRuleCount > 0
+            && !effectiveDigest.isEmpty
+            && effectiveDigest == appliedDigest
+    }
 
     public init(
         endpointURL: String,

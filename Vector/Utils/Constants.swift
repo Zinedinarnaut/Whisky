@@ -74,6 +74,9 @@ struct CompatibilityGame: Identifiable, Hashable {
     let recommendedArguments: String
     let recommendedPreset: String
     let notes: [String]
+    let confidence: Double
+    let tags: [String]
+    let lastVerifiedOn: String
     let trustClassification: GameTrustClassification
     let antiCheatProvider: String?
     let officialSupportRequired: Bool
@@ -89,6 +92,9 @@ struct CompatibilityGame: Identifiable, Hashable {
         recommendedArguments: String,
         recommendedPreset: String,
         notes: [String],
+        confidence: Double = 0.7,
+        tags: [String] = [],
+        lastVerifiedOn: String = "2026-04-28",
         trustClassification: GameTrustClassification = .singlePlayer,
         antiCheatProvider: String? = nil,
         officialSupportRequired: Bool = false,
@@ -103,6 +109,9 @@ struct CompatibilityGame: Identifiable, Hashable {
         self.recommendedArguments = recommendedArguments
         self.recommendedPreset = recommendedPreset
         self.notes = notes
+        self.confidence = min(1, max(0, confidence))
+        self.tags = tags
+        self.lastVerifiedOn = lastVerifiedOn
         self.trustClassification = trustClassification
         self.antiCheatProvider = antiCheatProvider
         self.officialSupportRequired = officialSupportRequired
@@ -125,7 +134,9 @@ enum VectorCompatibilityDatabase {
                 "Use the bundled runtime profile when possible.",
                 "Disable NVAPI and Steam overlay for best stability.",
                 "Vector includes FSR/NGX compatibility shims for this title."
-            ]
+            ],
+            confidence: 0.72,
+            tags: ["UE5", "D3D12", "FSR"]
         ),
         CompatibilityGame(
             id: "parcel-simulator",
@@ -139,7 +150,9 @@ enum VectorCompatibilityDatabase {
                 "Use D3D11 mode and DXVK overrides.",
                 "Disable NVAPI and Steam overlay.",
                 "Launch through Steam app command if direct EXE launch is unstable."
-            ]
+            ],
+            confidence: 0.92,
+            tags: ["D3D11", "DXVK", "Steam"]
         ),
         CompatibilityGame(
             id: "minecraft-dungeons",
@@ -156,7 +169,9 @@ enum VectorCompatibilityDatabase {
                 "Prefer Steam app launch for owned Steam copies; Vector routes pinned Steam installs through Steam.",
                 "Use Proton-style media/auth profile markers for the Microsoft sign-in and intro video path.",
                 "Keep DirectX 11 launch args for stable startup and renderer detection."
-            ]
+            ],
+            confidence: 0.78,
+            tags: ["D3D11", "Microsoft Auth", "Media"]
         ),
         CompatibilityGame(
             id: "content-warning",
@@ -170,7 +185,9 @@ enum VectorCompatibilityDatabase {
                 "Force D3D11 mode for more consistent startup behavior.",
                 "Disable NVAPI and Steam overlay to reduce renderer/overlay conflicts.",
                 "Launch through Steam app command if direct EXE launch is unstable."
-            ]
+            ],
+            confidence: 0.8,
+            tags: ["D3D11", "Media", "Steam"]
         ),
         CompatibilityGame(
             id: "silent-hill-f",
@@ -216,6 +233,8 @@ enum VectorCompatibilityDatabase {
                 "Vector blocks local launch instead of bypassing or weakening anti-cheat.",
                 "Use Steam Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC."
             ],
+            confidence: 0.98,
+            tags: ["EAC", "Protected", "Blocked"],
             trustClassification: .blockedAntiCheat,
             antiCheatProvider: "Easy Anti-Cheat / Embark Game Boot",
             officialSupportRequired: true,
@@ -253,7 +272,9 @@ enum VectorCompatibilityDatabase {
                 "Profile is prepared for the DX12 path through D3DMetal/GPTK-style translation.",
                 "Requires Windows 10 22H2 semantics, 16 GB RAM, SSD storage, and DirectX 12 feature coverage.",
                 "Launch support is release-build dependent; keep DXVK disabled unless testing fallback."
-            ]
+            ],
+            confidence: 0.35,
+            tags: ["DX12", "D3DMetal", "Unreleased"]
         ),
         CompatibilityGame(
             id: "titanfall-2",
@@ -294,7 +315,9 @@ enum VectorCompatibilityDatabase {
             notes: [
                 "Reported working in current Vector compatibility setup.",
                 "Use default DXVK + shader cache and keep Steam overlay disabled if instability appears."
-            ]
+            ],
+            confidence: 0.9,
+            tags: ["DXVK", "Steam", "Verified"]
         ),
         CompatibilityGame(
             id: "hydroneer",
@@ -307,7 +330,9 @@ enum VectorCompatibilityDatabase {
             notes: [
                 "Reported working in current Vector compatibility setup.",
                 "If startup fails, retry with DirectX 11 compatibility args."
-            ]
+            ],
+            confidence: 0.88,
+            tags: ["DXVK", "Steam", "Verified"]
         ),
         CompatibilityGame(
             id: "satisfactory",
@@ -320,7 +345,9 @@ enum VectorCompatibilityDatabase {
             notes: [
                 "Reported working in current Vector compatibility setup.",
                 "Prefer native fullscreen to trigger macOS Game Mode for smoother frame pacing."
-            ]
+            ],
+            confidence: 0.86,
+            tags: ["Fullscreen", "Steam", "Verified"]
         ),
         CompatibilityGame(
             id: "escape-the-backrooms",
@@ -333,7 +360,9 @@ enum VectorCompatibilityDatabase {
             notes: [
                 "Reported working in current Vector compatibility setup.",
                 "Use built-in Unreal dependencies preset if the first launch is unstable."
-            ]
+            ],
+            confidence: 0.86,
+            tags: ["Unreal", "Steam", "Verified"]
         )
     ]
 }

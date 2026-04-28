@@ -133,10 +133,19 @@ public struct VectorDoctorLogSnippet: Codable, Identifiable, Sendable {
     public var tail: String
 }
 
+public struct VectorDoctorHealthSnapshot: Codable, Sendable {
+    public var score: Int
+    public var grade: String
+    public var summary: String
+    public var risks: [String]
+    public var repairCount: Int
+}
+
 public struct VectorDoctorReport: Codable, Sendable {
     public var schemaVersion: Int
     public var generatedAt: String
     public var bottle: VectorDoctorBottleSnapshot
+    public var health: VectorDoctorHealthSnapshot
     public var hostCapabilities: VectorHostSecurityCapabilityReport
     public var runtimeAttestation: VectorRuntimeAttestation
     public var runtime: VectorDoctorRuntimeSnapshot

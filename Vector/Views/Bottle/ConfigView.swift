@@ -624,6 +624,26 @@ struct ConfigView: View {
                 }
 
                 if let report = vectorDoctorReport {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Health")
+                                .font(.subheadline.weight(.semibold))
+                            Text(report.health.summary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(report.health.score)/100")
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundStyle(healthScoreColor(report.health.score))
+                            Text(report.health.grade)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     ForEach(report.checks) { check in
                         vectorDoctorCheckRow(check)
                     }
@@ -1149,12 +1169,12 @@ struct ConfigView: View {
         let blockerCount = report.checks.filter { $0.status == .blocked || $0.status == .failed }.count
         let warningCount = report.checks.filter { $0.status == .warning }.count
         if blockerCount > 0 {
-            return "Vector Doctor found \(blockerCount) blocker(s) and \(warningCount) warning(s)."
+            return "Health \(report.health.score)/100. Found \(blockerCount) blocker(s) and \(warningCount) warning(s)."
         }
         if warningCount > 0 {
-            return "Vector Doctor found \(warningCount) warning(s)."
+            return "Health \(report.health.score)/100. Found \(warningCount) warning(s)."
         }
-        return "Vector Doctor found no major blockers."
+        return "Health \(report.health.score)/100. No major blockers found."
     }
 
     private func applyVectorDoctorFix(_ fixID: VectorDoctorFixID) {
@@ -3401,11 +3421,36 @@ private actor LaunchIntelligenceService {
         )
         addFinding(
             condition: combinedLog.localizedCaseInsensitiveContains("A D3D11-compatible GPU")
+                || combinedLog.localizedCaseInsensitiveContains("DX11 feature level 10.0")
                 || combinedLog.localizedCaseInsensitiveContains("Feature Level 11.0"),
             severity: .critical,
             title: "D3D11 feature-level requirement failed",
             detail: "The game could not initialize a required D3D11 path. Apply DX11 compatibility settings.",
             fix: .forceD3D11Compatibility,
+            findings: &findings,
+            fixes: &suggestedFixes
+        )
+        addFinding(
+            condition: combinedLog.localizedCaseInsensitiveContains("You have reached a page that is not normally shown")
+                || combinedLog.localizedCaseInsensitiveContains(
+                    "Microsoft will never ask you to copy or share this URL"
+                )
+                || combinedLog.localizedCaseInsensitiveContains("edgewebview"),
+            severity: .warning,
+            title: "Microsoft sign-in WebView fault detected",
+            detail: "The auth window reached an invalid callback page or WebView runtime fault.",
+            fix: .installCoreDependencies,
+            findings: &findings,
+            fixes: &suggestedFixes
+        )
+        addFinding(
+            condition: combinedLog.localizedCaseInsensitiveContains("mfplat.dll")
+                || combinedLog.localizedCaseInsensitiveContains("winegstreamer")
+                || combinedLog.localizedCaseInsensitiveContains("video playback"),
+            severity: .warning,
+            title: "Media playback dependency fault detected",
+            detail: "The logs point at Windows media playback components needed by game intro/auth flows.",
+            fix: .installCoreDependencies,
             findings: &findings,
             fixes: &suggestedFixes
         )

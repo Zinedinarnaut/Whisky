@@ -30,18 +30,11 @@ public enum VectorDoctor {
         )
         let bridge = bridgeSnapshot(for: bottle, host: host, protectedAssessment: protectedAssessment)
         let logs = recentLogSnippets(for: bottle, maxCount: 3)
-        let logText = logs.map(\.tail).joined(separator: "\n")
-        let doctorSignals = await DispatchPatchService.shared.doctorSignals(
-            for: bottle,
-            executablePath: bottle.settings.pins.first?.url?.path(percentEncoded: false) ?? "",
-            logText: logText
-        )
-        let repairSignals = repairSignals(
-            for: bottle,
+        let repairSignals = await repairSignalsForReport(
+            bottle: bottle,
             runtime: runtime,
             dispatch: dispatch,
-            logs: logs,
-            remoteFixIDs: doctorSignals.flatMap(\.fixIDs)
+            logs: logs
         )
         let checks = checksForReport(
             CheckContext(
@@ -55,11 +48,17 @@ public enum VectorDoctor {
             )
         )
         let recommendedFixes = recommendedFixes(from: repairSignals, protectedAssessment: protectedAssessment)
+        let health = healthSnapshot(
+            checks: checks,
+            repairSignals: repairSignals,
+            recommendedFixes: recommendedFixes
+        )
 
         return VectorDoctorReport(
-            schemaVersion: 1,
+            schemaVersion: 2,
             generatedAt: isoDateString(),
             bottle: bottleSnapshot(for: bottle),
+            health: health,
             hostCapabilities: host,
             runtimeAttestation: runtimeAttestation,
             runtime: runtime,
@@ -81,6 +80,26 @@ public enum VectorDoctor {
 }
 
 private extension VectorDoctor {
+    static func repairSignalsForReport(
+        bottle: Bottle,
+        runtime: VectorDoctorRuntimeSnapshot,
+        dispatch: VectorDoctorDispatchSnapshot,
+        logs: [VectorDoctorLogSnippet]
+    ) async -> RepairSignals {
+        let doctorSignals = await DispatchPatchService.shared.doctorSignals(
+            for: bottle,
+            executablePath: bottle.settings.pins.first?.url?.path(percentEncoded: false) ?? "",
+            logText: logs.map(\.tail).joined(separator: "\n")
+        )
+        return repairSignals(
+            for: bottle,
+            runtime: runtime,
+            dispatch: dispatch,
+            logs: logs,
+            remoteFixIDs: doctorSignals.flatMap(\.fixIDs)
+        )
+    }
+
     static func bottleSnapshot(for bottle: Bottle) -> VectorDoctorBottleSnapshot {
         VectorDoctorBottleSnapshot(
             name: bottle.settings.name,
@@ -285,5 +304,87 @@ private extension VectorDoctor {
 
     static func isoDateString() -> String {
         ISO8601DateFormatter().string(from: Date())
+    }
+
+    static func healthSnapshot(
+        checks: [VectorDoctorCheck],
+        repairSignals: RepairSignals,
+        recommendedFixes: [VectorDoctorFixSuggestion]
+    ) -> VectorDoctorHealthSnapshot {
+        var score = 100
+        var risks: [String] = []
+
+        for check in checks {
+            switch check.status {
+            case .pass:
+                continue
+            case .info:
+                score -= 3
+            case .warning:
+                score -= 12
+                risks.append("\(check.title): \(check.detail)")
+            case .blocked:
+                score -= 35
+                risks.append("\(check.title): \(check.detail)")
+            case .failed:
+                score -= 28
+                risks.append("\(check.title): \(check.detail)")
+            }
+        }
+
+        if repairSignals.needsMediaRepair {
+            score -= 6
+        }
+        if repairSignals.needsLauncherDependencyRepair {
+            score -= 6
+        }
+        if repairSignals.needsRuntimeRepair {
+            score -= 10
+        }
+        if repairSignals.needsWineserverReset {
+            score -= 12
+        }
+
+        let clampedScore = min(100, max(0, score))
+        return VectorDoctorHealthSnapshot(
+            score: clampedScore,
+            grade: healthGrade(for: clampedScore),
+            summary: healthSummary(for: clampedScore, recommendedFixes: recommendedFixes),
+            risks: Array(risks.uniqued().prefix(6)),
+            repairCount: recommendedFixes.count
+        )
+    }
+
+    static func healthGrade(for score: Int) -> String {
+        switch score {
+        case 90...100:
+            return "Excellent"
+        case 75..<90:
+            return "Good"
+        case 55..<75:
+            return "Needs attention"
+        default:
+            return "Repair recommended"
+        }
+    }
+
+    static func healthSummary(
+        for score: Int,
+        recommendedFixes: [VectorDoctorFixSuggestion]
+    ) -> String {
+        guard !recommendedFixes.isEmpty else {
+            return score >= 75
+                ? "Bottle looks healthy. No one-click repairs are recommended."
+                : "Bottle has risk signals, but no safe automated repair was identified."
+        }
+        let actions = recommendedFixes.map(\.actionTitle).joined(separator: ", ")
+        return "Recommended repair path: \(actions)."
+    }
+}
+
+private extension Array where Element == String {
+    func uniqued() -> [String] {
+        var seen = Set<String>()
+        return filter { seen.insert($0).inserted }
     }
 }

@@ -32,6 +32,8 @@ extension VectorDoctor {
     static func checksForReport(_ context: CheckContext) -> [VectorDoctorCheck] {
         [
             hostCheck(context.host),
+            bottleStorageCheck(context.bottle),
+            registryCheck(context.bottle),
             runtimeCheck(context.runtime),
             bridgeCheck(context.bridge),
             dispatchCheck(context.dispatch),
@@ -62,6 +64,76 @@ private extension VectorDoctor {
             status: runtimeReady ? .pass : .failed,
             detail: runtimeReady ? "Bundled runtime pair is present." : "Bundled wine/wineserver pair is incomplete.",
             metadata: ["wineVersion": runtime.installedWineVersion]
+        )
+    }
+
+    static func bottleStorageCheck(_ bottle: Bottle) -> VectorDoctorCheck {
+        let bottlePath = bottle.url.path(percentEncoded: false)
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: bottlePath, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return check(
+                id: "bottle_storage",
+                title: "Bottle storage",
+                status: .failed,
+                detail: "Bottle folder is missing or no longer reachable.",
+                metadata: ["path": bottlePath]
+            )
+        }
+
+        let isWritable = fileManager.isWritableFile(atPath: bottlePath)
+        let values = try? bottle.url.resourceValues(
+            forKeys: [.volumeNameKey, .volumeIsInternalKey, .volumeAvailableCapacityForImportantUsageKey]
+        )
+        let freeBytes = values?.volumeAvailableCapacityForImportantUsage ?? 0
+        let freeSpace = freeBytes > 0 ? ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file) : ""
+        let volumeKind = values?.volumeIsInternal == false ? "external" : "local"
+
+        if !isWritable {
+            return check(
+                id: "bottle_storage",
+                title: "Bottle storage",
+                status: .failed,
+                detail: "Bottle folder is reachable but not writable.",
+                metadata: ["path": bottlePath, "volume": values?.volumeName ?? ""]
+            )
+        }
+
+        let status: VectorDoctorCheckStatus = freeBytes > 0 && freeBytes < 10_000_000_000 ? .warning : .pass
+        let detail = freeSpace.isEmpty
+            ? "Bottle folder is writable on \(volumeKind) storage."
+            : "Bottle folder is writable on \(volumeKind) storage with \(freeSpace) available."
+        return check(
+            id: "bottle_storage",
+            title: "Bottle storage",
+            status: status,
+            detail: detail,
+            metadata: ["path": bottlePath, "volume": values?.volumeName ?? "", "freeBytes": "\(freeBytes)"]
+        )
+    }
+
+    static func registryCheck(_ bottle: Bottle) -> VectorDoctorCheck {
+        let registryFiles = ["system.reg", "user.reg", "userdef.reg"]
+        let missing = registryFiles.filter { file in
+            let url = bottle.url.appending(path: file)
+            return !FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+        }
+
+        guard missing.isEmpty else {
+            return check(
+                id: "registry",
+                title: "Registry files",
+                status: .failed,
+                detail: "Missing registry hive files: \(missing.joined(separator: ", ")).",
+                metadata: ["missing": missing.joined(separator: ",")]
+            )
+        }
+
+        return check(
+            id: "registry",
+            title: "Registry files",
+            status: .pass,
+            detail: "Required registry hive files are present."
         )
     }
 

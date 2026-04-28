@@ -143,7 +143,7 @@ struct BottleCreationView: View {
 
                         Text(storageLocationStatus.message)
                             .font(.caption)
-                            .foregroundColor(storageLocationStatus.isUsable ? .secondary : .red)
+                            .foregroundColor(storageLocationStatus.textColor)
                     }
                 }
             }
@@ -231,7 +231,14 @@ struct BottleCreationView: View {
 
 private struct BottleStorageLocationStatus {
     var isUsable: Bool
+    var isWarning: Bool
     var message: String
+    var textColor: Color {
+        if !isUsable {
+            return .red
+        }
+        return isWarning ? .orange : .secondary
+    }
 
     init(url: URL) {
         let fileManager = FileManager.default
@@ -240,6 +247,7 @@ private struct BottleStorageLocationStatus {
 
         if fileManager.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue {
             self.isUsable = false
+            self.isWarning = false
             self.message = "Selected location is a file, not a folder."
             return
         }
@@ -249,6 +257,7 @@ private struct BottleStorageLocationStatus {
         guard fileManager.fileExists(atPath: validationPath),
               fileManager.isWritableFile(atPath: validationPath) else {
             self.isUsable = false
+            self.isWarning = false
             self.message = "Vector cannot write to this location."
             return
         }
@@ -258,15 +267,26 @@ private struct BottleStorageLocationStatus {
         )
         let volumeName = values?.volumeName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let locationKind = values?.volumeIsInternal == false ? "External storage" : "Local storage"
-        let freeSpace = values?.volumeAvailableCapacityForImportantUsage.map {
+        let freeBytes = values?.volumeAvailableCapacityForImportantUsage
+        let freeSpace = freeBytes.map {
             ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
         }
+
+        if let freeBytes, freeBytes < 10_000_000_000 {
+            self.isUsable = false
+            self.isWarning = false
+            self.message = "\(locationKind) has only \(freeSpace ?? "limited space") available."
+            return
+        }
+
         let details = [locationKind, volumeName, freeSpace.map { "\($0) available" }]
             .compactMap { $0 }
             .joined(separator: " - ")
 
         self.isUsable = true
-        self.message = details.isEmpty ? "Ready to create bottles here." : details
+        self.isWarning = (freeBytes ?? 40_000_000_000) < 30_000_000_000
+        let prefix = isWarning ? "Low free space - " : ""
+        self.message = details.isEmpty ? "Ready to create bottles here." : "\(prefix)\(details)"
     }
 }
 

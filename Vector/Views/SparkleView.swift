@@ -502,9 +502,13 @@ struct PatchCenterView: View {
                 dispatchStatus = status
                 loading = false
                 progress = 0
-                statusMessage = status.updateAvailable
-                    ? "A newer patch set is available."
-                    : "You are on the latest patch set."
+                if status.updateAvailable {
+                    statusMessage = "A newer patch set is available."
+                } else if status.alreadyApplied {
+                    statusMessage = "Latest patch set already applied to this bottle."
+                } else {
+                    statusMessage = "Patch metadata is current."
+                }
             }
         }
     }
@@ -537,7 +541,9 @@ struct PatchCenterView: View {
                 dispatchStatus = appliedStatus
                 progress = 1
                 syncing = false
-                statusMessage = "Patch update complete for \(targetBottle.settings.name)."
+                statusMessage = appliedStatus.alreadyApplied
+                    ? "Patch set is applied for \(targetBottle.settings.name)."
+                    : "Patch sync completed for \(targetBottle.settings.name)."
                 targetBottle.updateInstalledPrograms()
             }
         }
