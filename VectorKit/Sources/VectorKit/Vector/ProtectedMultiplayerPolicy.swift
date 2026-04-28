@@ -429,14 +429,7 @@ public enum VectorProtectedTitlePolicyEngine {
     }
 
     public static func assertMemoryToolingAllowed(for bottle: Bottle) throws {
-        guard VectorDeveloperToolPolicy.developerToolsEnabled else {
-            throw WineProcessMemoryError.protectedToolingUnavailable(
-                """
-                Memory tooling requires Developer Tools mode. Set VECTOR_DEVELOPER_TOOLS=1 for \
-                single-player/debug bottles.
-                """
-            )
-        }
+        try VectorDeveloperToolPolicy.assertAdvancedDiagnosticsAllowed()
         if let assessment = protectedAssessment(for: bottle), let title = assessment.matchedTitle {
             throw WineProcessMemoryError.protectedToolingUnavailable(
                 "Memory tooling is disabled for protected multiplayer title: \(title.title)."
