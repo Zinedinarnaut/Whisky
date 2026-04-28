@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CompatibilityTable } from "@/components/site/compatibility-table";
 import { FeatureCard } from "@/components/site/feature-card";
+import { ProductVisuals } from "@/components/site/product-visuals";
 import { RuntimePanel } from "@/components/site/runtime-panel";
 import { SectionHeading } from "@/components/site/section-heading";
 import { faqs, featureCards, heroStats, systemPrinciples, workflowSteps } from "@/lib/site-data";
@@ -66,6 +67,17 @@ export default async function Home() {
             releaseTag={distribution.tagName}
             generatedAt={manifest.generated_at}
           />
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-7xl px-5 py-20 sm:px-8">
+        <SectionHeading
+          eyebrow="Product visuals"
+          title="Built like a real Mac utility, not a compatibility spreadsheet."
+          description="The public site now shows the actual product direction: bottle health, patch status, protected-game policy, and release metadata in one compact control surface."
+        />
+        <div className="mt-12">
+          <ProductVisuals ruleCount={ruleCount} releaseTag={distribution.tagName} />
         </div>
       </section>
 
