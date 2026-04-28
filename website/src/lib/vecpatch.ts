@@ -1,5 +1,5 @@
 export const vecPatchBaseURL = process.env.NEXT_PUBLIC_VECPATCH_API_URL ?? "https://vector.nanite.com.au";
-const GITHUB_RELEASE_URL = "https://api.github.com/repos/Zinedinarnaut/Whisky/releases/latest";
+const GITHUB_RELEASES_URL = "https://api.github.com/repos/Zinedinarnaut/Whisky/releases?per_page=20";
 const GITHUB_REPO_URL = "https://github.com/Zinedinarnaut/Whisky";
 
 export type PatchRiskLevel = "low" | "medium" | "high" | "blocked" | string;
@@ -67,6 +67,10 @@ type GitHubRelease = {
   zipball_url?: string;
 };
 
+type ReleaseManifest = {
+  code_signing?: string;
+};
+
 export type DistributionAsset = {
   name: string;
   kind: "app" | "runtime" | "manifest" | "metadata" | "source";
@@ -85,6 +89,7 @@ export type DistributionMetadata = {
   releaseUrl: string;
   sourceUrl: string;
   hasSignedApp: boolean;
+  codeSigning?: string;
   assets: DistributionAsset[];
   unavailable?: boolean;
 };
@@ -316,7 +321,7 @@ export async function getCompatibilityDatabase(): Promise<CompatibilityDatabase>
 
 export async function getDistributionMetadata(): Promise<DistributionMetadata> {
   try {
-    const response = await fetch(GITHUB_RELEASE_URL, {
+    const response = await fetch(GITHUB_RELEASES_URL, {
       next: { revalidate: 300 },
       headers: { accept: "application/vnd.github+json" },
     });
@@ -325,9 +330,15 @@ export async function getDistributionMetadata(): Promise<DistributionMetadata> {
       return fallbackDistribution();
     }
 
-    const release = (await response.json()) as GitHubRelease;
+    const releases = (await response.json()) as GitHubRelease[];
+    const release = selectDistributionRelease(releases);
+    if (!release) {
+      return fallbackDistribution();
+    }
+
     const assets = release.assets.map(mapReleaseAsset);
-    const hasSignedApp = assets.some((asset) => asset.kind === "app");
+    const codeSigning = await fetchCodeSigningState(assets);
+    const hasSignedApp = codeSigning?.startsWith("developer-id") ?? false;
 
     if (release.zipball_url) {
       assets.push({
@@ -347,6 +358,7 @@ export async function getDistributionMetadata(): Promise<DistributionMetadata> {
       releaseUrl: release.html_url,
       sourceUrl: GITHUB_REPO_URL,
       hasSignedApp,
+      codeSigning,
       assets,
     };
   } catch {
@@ -428,6 +440,37 @@ function mapReleaseAsset(asset: GitHubAsset): DistributionAsset {
     downloadCount: asset.download_count,
     contentType: asset.content_type,
   };
+}
+
+function selectDistributionRelease(releases: GitHubRelease[]) {
+  return releases.find((release) => release.assets.some(isAppReleaseAsset)) ?? releases[0];
+}
+
+function isAppReleaseAsset(asset: GitHubAsset) {
+  const lowerName = asset.name.toLowerCase();
+  return lowerName === "vector.dmg" || lowerName === "vector.zip";
+}
+
+async function fetchCodeSigningState(assets: DistributionAsset[]) {
+  const manifestAsset = assets.find((asset) => asset.name.toLowerCase() === "manifest.json");
+  if (!manifestAsset) {
+    return undefined;
+  }
+
+  try {
+    const response = await fetch(manifestAsset.downloadUrl, {
+      next: { revalidate: 300 },
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const manifest = (await response.json()) as ReleaseManifest;
+    return manifest.code_signing;
+  } catch {
+    return undefined;
+  }
 }
 
 function fallbackDistribution(): DistributionMetadata {

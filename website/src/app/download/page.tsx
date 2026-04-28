@@ -80,6 +80,7 @@ export default async function DownloadPage() {
               {[
                 ["Release", distribution.tagName],
                 ["Published", formatDate(distribution.publishedAt)],
+                ["Code signing", distribution.codeSigning ?? "unknown"],
                 ["VecPatch rules", String(manifest.metadata?.rule_count ?? manifest.rules.length)],
                 ["Signature mode", manifest.metadata?.signature_mode ?? "unknown"],
                 ["Dispatch commit", manifest.commit_sha?.slice(0, 12) ?? "unknown"],
