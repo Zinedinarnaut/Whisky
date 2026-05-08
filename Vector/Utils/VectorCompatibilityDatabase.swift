@@ -19,9 +19,33 @@
 import VectorKit
 
 // Static compatibility metadata is intentionally dense; keep UI code split from this data table.
-// swiftlint:disable type_body_length
+// swiftlint:disable file_length type_body_length
+
+struct CompatibilityPatchVisibilityMetadata: Hashable {
+    let backend: String
+    let fallbackBackend: String?
+    let executableMatch: String?
+    let patchVersion: String
+    let patchState: String
+    let riskLevel: String
+    let recommendedAction: String?
+    let knownIssues: [String]
+
+    var backendDisplay: String {
+        guard let fallbackBackend,
+              !fallbackBackend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              fallbackBackend != backend else {
+            return backend
+        }
+        return "\(backend) / \(fallbackBackend)"
+    }
+}
 
 enum VectorCompatibilityDatabase {
+    static func patchVisibility(for game: CompatibilityGame) -> CompatibilityPatchVisibilityMetadata {
+        patchVisibilityMetadata[game.id] ?? fallbackPatchVisibility(for: game)
+    }
+
     static let knownGames: [CompatibilityGame] = [
         CompatibilityGame(
             id: "high-on-life-2",
@@ -330,6 +354,204 @@ enum VectorCompatibilityDatabase {
             ]
         )
     ]
+
+    private static let patchVisibilityMetadata: [String: CompatibilityPatchVisibilityMetadata] = [
+        "high-on-life-2": CompatibilityPatchVisibilityMetadata(
+            backend: "d3dMetal",
+            fallbackBackend: "dxvk",
+            executableMatch: "highonlife2-win64-shipping.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Use the local profile and verify the FSR/NGX shim path before marking playable.",
+            knownIssues: ["Launch evidence is still limited for the D3D12 path."]
+        ),
+        "parcel-simulator": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: "d3dMetal",
+            executableMatch: "parcel-win64-shipping.exe",
+            patchVersion: "v1",
+            patchState: "remote-rule",
+            riskLevel: "low",
+            recommendedAction: "Apply the local or VecPatch D3D11 profile.",
+            knownIssues: []
+        ),
+        "minecraft-dungeons": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: "wined3d",
+            executableMatch: "dungeons-win64-shipping.exe",
+            patchVersion: "v2",
+            patchState: "remote-rule",
+            riskLevel: "low",
+            recommendedAction: "Run the sign-in/media repair path if auth or intro video fails.",
+            knownIssues: ["Microsoft sign-in can require WebView2/auth cache repair."]
+        ),
+        "content-warning": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: "d3dMetal",
+            executableMatch: "content warning.exe",
+            patchVersion: "v2",
+            patchState: "remote-rule",
+            riskLevel: "low",
+            recommendedAction: "Apply the local or VecPatch D3D11 profile.",
+            knownIssues: []
+        ),
+        "silent-hill-f": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: nil,
+            executableMatch: "silenthillf-win64-shipping.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Use the local DX11 profile until release-build launch evidence improves.",
+            knownIssues: ["DX12 path is unstable on Apple Silicon."]
+        ),
+        "wemod": CompatibilityPatchVisibilityMetadata(
+            backend: "wined3d",
+            fallbackBackend: nil,
+            executableMatch: "wemod.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Use the compatibility runtime pair and disable Electron GPU compositing.",
+            knownIssues: ["Electron UI rendering can remain black or hidden."]
+        ),
+        "arc-raiders": CompatibilityPatchVisibilityMetadata(
+            backend: "protected",
+            fallbackBackend: nil,
+            executableMatch: "arcraiders.exe",
+            patchVersion: "v1",
+            patchState: "blocked",
+            riskLevel: "blocked",
+            recommendedAction: "Use Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC.",
+            knownIssues: ["Official anti-cheat support required."]
+        ),
+        "rainbow-six-extraction": CompatibilityPatchVisibilityMetadata(
+            backend: "protected",
+            fallbackBackend: nil,
+            executableMatch: "rainbowsix.exe",
+            patchVersion: "metadata",
+            patchState: "blocked",
+            riskLevel: "blocked",
+            recommendedAction: "Use a supported Windows host or official remote-play path.",
+            knownIssues: ["Official BattlEye support required."]
+        ),
+        "forza-horizon-6": CompatibilityPatchVisibilityMetadata(
+            backend: "d3dMetal",
+            fallbackBackend: "dxvk",
+            executableMatch: "forzahorizon6.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Treat as profile metadata only until a released build is tested.",
+            knownIssues: ["Support is release-build dependent and not verified."]
+        ),
+        "titanfall-2": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: nil,
+            executableMatch: "titanfall2.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Repair the EA App bootstrap before treating failures as renderer issues.",
+            knownIssues: ["EA App bootstrap can stall before game launch."]
+        ),
+        "ea-app-origin": CompatibilityPatchVisibilityMetadata(
+            backend: "wined3d",
+            fallbackBackend: nil,
+            executableMatch: "eadesktop.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Run launcher dependency repair when installer or sign-in windows fail.",
+            knownIssues: ["Launcher rendering and sign-in are still fragile."]
+        ),
+        "lethal-company": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: nil,
+            executableMatch: "lethal company.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Use the local baseline profile.",
+            knownIssues: []
+        ),
+        "hydroneer": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: nil,
+            executableMatch: "hydroneer-win64-shipping.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Use the local baseline profile.",
+            knownIssues: []
+        ),
+        "satisfactory": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: nil,
+            executableMatch: "factorygamesteam.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Use the local DX11 profile and native fullscreen when possible.",
+            knownIssues: []
+        ),
+        "escape-the-backrooms": CompatibilityPatchVisibilityMetadata(
+            backend: "dxvk",
+            fallbackBackend: nil,
+            executableMatch: "escapethebackrooms.exe",
+            patchVersion: "local",
+            patchState: "local-profile",
+            riskLevel: "low",
+            recommendedAction: "Use the local DX11 profile and Unreal dependency preset if first launch is unstable.",
+            knownIssues: []
+        )
+    ]
+
+    private static func fallbackPatchVisibility(
+        for game: CompatibilityGame
+    ) -> CompatibilityPatchVisibilityMetadata {
+        let patchState: String
+        if game.officialSupportRequired {
+            patchState = "blocked"
+        } else if game.hasRemoteVecPatchRule {
+            patchState = "remote-rule"
+        } else if game.hasLocalProfile {
+            patchState = "local-profile"
+        } else {
+            patchState = "metadata-only"
+        }
+
+        return CompatibilityPatchVisibilityMetadata(
+            backend: inferredBackend(from: game),
+            fallbackBackend: nil,
+            executableMatch: nil,
+            patchVersion: game.hasRemoteVecPatchRule ? "remote" : "local",
+            patchState: patchState,
+            riskLevel: game.officialSupportRequired ? "blocked" : "low",
+            recommendedAction: game.notes.first,
+            knownIssues: game.officialSupportRequired ? ["Official support required."] : []
+        )
+    }
+
+    private static func inferredBackend(from game: CompatibilityGame) -> String {
+        let searchable = ([game.recommendedPreset, game.recommendedArguments] + game.tags)
+            .joined(separator: " ")
+            .lowercased()
+        if searchable.contains("protected") || game.officialSupportRequired {
+            return "protected"
+        }
+        if searchable.contains("d3dmetal") || searchable.contains("d3d12") {
+            return "d3dMetal"
+        }
+        if searchable.contains("wined3d") || searchable.contains("electron") {
+            return "wined3d"
+        }
+        if searchable.contains("dxvk") || searchable.contains("d3d11") {
+            return "dxvk"
+        }
+        return "auto"
+    }
 }
 
-// swiftlint:enable type_body_length
+// swiftlint:enable file_length type_body_length

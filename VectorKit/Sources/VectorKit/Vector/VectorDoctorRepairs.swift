@@ -39,6 +39,7 @@ extension VectorDoctor {
         var steamDetails: String
     }
 
+    // swiftlint:disable:next function_body_length
     static func repairSignals(
         for bottle: Bottle,
         runtime: VectorDoctorRuntimeSnapshot,
@@ -47,36 +48,57 @@ extension VectorDoctor {
         remoteFixIDs: [String] = []
     ) -> RepairSignals {
         let logText = logs.map(\.tail).joined(separator: "\n").lowercased()
-        let missingMediaDLLs = missingDLLs(mediaPlaybackDLLs, in: bottle)
-        let missingRuntimeDLLs = missingDLLs(runtimeDependencyDLLs, in: bottle)
-        let graphicsIssues = graphicsPayloadIssues(in: bottle)
-        let missingXboxServices = missingXboxIdentityServiceNames(in: bottle)
         let hasMediaLogFault = containsAny(mediaFaultNeedles, in: logText)
         let hasWebViewAuthFault = containsAny(webViewAuthFaultNeedles, in: logText)
         let hasRuntimeDependencyFault = containsAny(runtimeDependencyFaultNeedles, in: logText)
         let hasSteamWebHelperFault = containsAny(steamWebHelperFaultNeedles, in: logText)
         let hasWineserverMismatch = containsAny(wineserverFaultNeedles, in: logText)
         let normalizedRemoteFixIDs = remoteFixIDs.compactMap(VectorDoctorFixID.init(rawValue:))
-        let hasRepairableLauncherFault = hasWebViewAuthFault || hasRuntimeDependencyFault
+        let missingMediaDLLs = missingDLLs(mediaPlaybackDLLs, in: bottle)
+        let missingRuntimeDLLs = missingDLLs(runtimeDependencyDLLs, in: bottle)
+        let missingDotNetMarkers = missingDotNetRuntimeMarkers(in: bottle)
+        let graphicsIssues = graphicsPayloadIssues(in: bottle)
+        let missingXboxServices = missingXboxIdentityServiceNames(in: bottle)
+        let hasMediaMetadataSignal = normalizedRemoteFixIDs.contains(.repairMediaPlayback)
+        let hasLauncherMetadataSignal = normalizedRemoteFixIDs.contains(.repairLauncherDependencies)
+        let hasRuntimeDependencyFileSignal = runtimeDependencyFileSignal(
+            missingDLLs: missingRuntimeDLLs,
+            missingDotNetMarkers: missingDotNetMarkers,
+            hasRuntimeDependencyFault: hasRuntimeDependencyFault,
+            hasLauncherMetadataSignal: hasLauncherMetadataSignal,
+            trainerSupportMode: bottle.settings.trainerSupportMode
+        )
+        let hasRepairableLauncherFault = hasWebViewAuthFault
+            || hasRuntimeDependencyFault
+            || hasRuntimeDependencyFileSignal
+            || hasLauncherMetadataSignal
         let hasXboxManualFallback = hasWebViewAuthFault && !missingXboxServices.isEmpty
 
         return RepairSignals(
             needsRuntimeRepair: !runtime.bundledWinePresent || !runtime.bundledWineserverPresent,
             needsWineserverReset: hasWineserverMismatch,
             needsPatchSync: dispatch.updateAvailable,
-            needsMediaRepair: hasMediaLogFault || !missingMediaDLLs.isEmpty,
+            needsMediaRepair: hasMediaLogFault || !missingMediaDLLs.isEmpty || hasMediaMetadataSignal,
             needsLauncherDependencyRepair: hasRepairableLauncherFault,
             needsWebViewAuthRepair: hasWebViewAuthFault,
-            needsRuntimeDependencyRepair: hasRuntimeDependencyFault,
+            needsRuntimeDependencyRepair: hasRuntimeDependencyFault || hasRuntimeDependencyFileSignal,
             needsGraphicsPayloadRepair: !graphicsIssues.isEmpty,
             needsSteamWebHelperFallback: hasSteamWebHelperFault,
             needsXboxManualFallback: hasXboxManualFallback,
             remoteFixIDs: normalizedRemoteFixIDs,
-            mediaDetails: mediaDetails(missingDLLs: missingMediaDLLs),
+            mediaDetails: mediaDetails(
+                missingDLLs: missingMediaDLLs,
+                hasMediaLogFault: hasMediaLogFault,
+                hasMediaMetadataSignal: hasMediaMetadataSignal
+            ),
             launcherDetails: launcherDetails(
                 missingDLLs: missingRuntimeDLLs,
-                hasWebViewAuthFault: hasWebViewAuthFault,
-                hasRuntimeDependencyFault: hasRuntimeDependencyFault,
+                missingDotNetMarkers: missingDotNetMarkers,
+                flags: LauncherDetailFlags(
+                    hasWebViewAuthFault: hasWebViewAuthFault,
+                    hasRuntimeDependencyFault: hasRuntimeDependencyFault,
+                    hasLauncherMetadataSignal: hasLauncherMetadataSignal
+                ),
                 missingXboxServices: missingXboxServices
             ),
             graphicsDetails: graphicsDetails(issues: graphicsIssues),
@@ -113,6 +135,12 @@ extension VectorDoctor {
 }
 
 private extension VectorDoctor {
+    struct LauncherDetailFlags {
+        var hasWebViewAuthFault: Bool
+        var hasRuntimeDependencyFault: Bool
+        var hasLauncherMetadataSignal: Bool
+    }
+
     static let mediaPlaybackDLLs = [
         "mf.dll",
         "mfplat.dll",
@@ -127,13 +155,19 @@ private extension VectorDoctor {
         "winegstreamer.dll"
     ]
 
-    static let runtimeDependencyDLLs = [
+    static let dotNetRuntimeDLLs = [
         "mscoree.dll",
+        "mscorsvw.exe",
+        "fusion.dll"
+    ]
+
+    static let visualCppRuntimeDLLs = [
         "vcruntime140.dll",
         "vcruntime140_1.dll",
         "msvcp140.dll",
         "concrt140.dll",
-        "ucrtbase.dll"
+        "ucrtbase.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll"
     ]
 
     static let dxvkPayloadDLLs = [
@@ -142,13 +176,20 @@ private extension VectorDoctor {
         "d3d10core.dll"
     ]
 
-    static let dxmtPayloadDLLs = [
+    static let dxmtCorePayloadDLLs = [
         "dxgi.dll",
         "d3d11.dll",
-        "d3d10core.dll",
+        "d3d10core.dll"
+    ]
+
+    static let dlssPayloadDLLs = [
         "nvapi64.dll",
         "nvngx.dll"
     ]
+
+    static var runtimeDependencyDLLs: [String] {
+        dotNetRuntimeDLLs + visualCppRuntimeDLLs
+    }
 
     static let mediaFaultNeedles = [
         "media foundation",
@@ -273,30 +314,49 @@ private extension VectorDoctor {
         }
     }
 
-    static func mediaDetails(missingDLLs: [String]) -> String {
-        if missingDLLs.isEmpty {
+    static func mediaDetails(
+        missingDLLs: [String],
+        hasMediaLogFault: Bool,
+        hasMediaMetadataSignal: Bool
+    ) -> String {
+        if missingDLLs.isEmpty, hasMediaMetadataSignal {
+            return "Compatibility metadata recommends the media playback repair for this game."
+        }
+        if missingDLLs.isEmpty, hasMediaLogFault {
             return "Recent logs indicate Media Foundation, codec, Quartz, or winegstreamer video faults."
         }
-        return "Missing or drifted media DLLs: \(missingDLLs.prefix(5).joined(separator: ", "))."
+        var details = ["Missing or drifted media DLLs: \(missingDLLs.prefix(5).joined(separator: ", "))."]
+        if hasMediaMetadataSignal {
+            details.append("Compatibility metadata also recommends the media playback repair.")
+        }
+        return details.joined(separator: " ")
     }
 
     static func launcherDetails(
         missingDLLs: [String],
-        hasWebViewAuthFault: Bool,
-        hasRuntimeDependencyFault: Bool,
+        missingDotNetMarkers: [String],
+        flags: LauncherDetailFlags,
         missingXboxServices: [String]
     ) -> String {
         var details: [String] = []
-        if hasWebViewAuthFault {
+        if flags.hasLauncherMetadataSignal {
+            details.append("Compatibility metadata recommends launcher dependency repair for this game.")
+        }
+        if flags.hasWebViewAuthFault {
             details.append("Recent logs match Microsoft/Xbox/WebView2 auth-loop signals.")
         }
-        if hasRuntimeDependencyFault {
+        if flags.hasRuntimeDependencyFault {
             details.append("Recent logs mention .NET, Visual C++, UCRT, or loader DLL failures.")
         }
-        if !missingDLLs.isEmpty {
-            details.append("Missing runtime DLL candidates: \(missingDLLs.prefix(4).joined(separator: ", ")).")
+        let missingVisualCppDLLs = missingDLLs.filter { visualCppRuntimeDLLs.contains($0) }
+        if !missingVisualCppDLLs.isEmpty {
+            let dlls = missingVisualCppDLLs.prefix(4).joined(separator: ", ")
+            details.append("Missing Visual C++/UCRT DLL candidates: \(dlls).")
         }
-        if hasWebViewAuthFault, !missingXboxServices.isEmpty {
+        if !missingDotNetMarkers.isEmpty {
+            details.append("Missing .NET runtime markers: \(missingDotNetMarkers.prefix(4).joined(separator: ", ")).")
+        }
+        if flags.hasWebViewAuthFault, !missingXboxServices.isEmpty {
             let services = missingXboxServices.prefix(4).joined(separator: ", ")
             details.append(
                 "Xbox Identity/Gaming Services are unavailable in this prefix (\(services)); Vector can reset "
@@ -337,18 +397,26 @@ private extension VectorDoctor {
 
     static func graphicsPayloadIssues(in bottle: Bottle) -> [String] {
         var issues: [String] = []
-        if expectsDXVK(for: bottle), !hasDLLs(dxvkPayloadDLLs, in: bottle) {
-            issues.append("DXVK is selected, but core DXVK DLLs are missing from system32/syswow64.")
+        let missingDXVK = missingDLLCopies(dxvkPayloadDLLs, in: bottle)
+        if expectsDXVK(for: bottle), !missingDXVK.isEmpty {
+            issues.append(
+                "DXVK is selected, but core DXVK DLLs are missing: \(formattedDLLCopies(missingDXVK))."
+            )
         }
         if expectsDXMT(for: bottle) {
             if !Wine.isDXMTPayloadReady() {
                 issues.append("DXMT is selected, but Vector's cached DXMT payload is incomplete.")
             }
-            if !hasDLLs(dxmtPayloadDLLs, in: bottle) {
-                issues.append("DXMT/DLSS DLL deployment is incomplete in this bottle.")
+            let missingDXMT = missingDLLCopies(dxmtCorePayloadDLLs, in: bottle)
+            if !missingDXMT.isEmpty {
+                issues.append(
+                    "DXMT core DLL deployment is incomplete: \(formattedDLLCopies(missingDXMT))."
+                )
             }
             if bottle.settings.dlssRuntimeTranslationEnabled, !hasDLSSRuntimePayload(for: bottle) {
-                issues.append("DLSS translation is enabled, but NVAPI/NVNGX DLLs are missing.")
+                let missingDLSS = missingDLLCopies(dlssPayloadDLLs, in: bottle, directories: ["system32"])
+                let suffix = missingDLSS.isEmpty ? "" : ": \(formattedDLLCopies(missingDLSS))"
+                issues.append("DLSS translation is enabled, but NVAPI/NVNGX DLLs are missing\(suffix).")
             }
         }
         return issues
@@ -369,6 +437,69 @@ private extension VectorDoctor {
 
     static func hasDLLs(_ dllNames: [String], in bottle: Bottle) -> Bool {
         missingDLLs(dllNames, in: bottle).isEmpty
+    }
+
+    static func missingDLLCopies(
+        _ dllNames: [String],
+        in bottle: Bottle,
+        directories: [String] = ["system32", "syswow64"]
+    ) -> [String] {
+        let windowsDirectory = bottle.url.appending(path: "drive_c").appending(path: "windows")
+        let fileManager = FileManager.default
+        return directories.flatMap { directory in
+            dllNames.compactMap { dllName in
+                let url = windowsDirectory.appending(path: directory).appending(path: dllName)
+                return fileManager.fileExists(atPath: url.path(percentEncoded: false))
+                    ? nil
+                    : "\(directory)/\(dllName)"
+            }
+        }
+    }
+
+    static func formattedDLLCopies(_ copies: [String]) -> String {
+        let formatted = copies.prefix(6).joined(separator: ", ")
+        if copies.count <= 6 {
+            return formatted
+        }
+        return "\(formatted), +\(copies.count - 6) more"
+    }
+
+    static func missingDotNetRuntimeMarkers(in bottle: Bottle) -> [String] {
+        var missing = missingDLLs(dotNetRuntimeDLLs, in: bottle)
+        let windows = bottle.url.appending(path: "drive_c").appending(path: "windows")
+        let frameworkCandidates = [
+            windows
+                .appending(path: "Microsoft.NET")
+                .appending(path: "Framework")
+                .appending(path: "v4.0.30319")
+                .appending(path: "mscorlib.dll"),
+            windows
+                .appending(path: "Microsoft.NET")
+                .appending(path: "Framework64")
+                .appending(path: "v4.0.30319")
+                .appending(path: "mscorlib.dll")
+        ]
+        let hasFramework = frameworkCandidates.contains {
+            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+        if !hasFramework {
+            missing.append("Microsoft.NET Framework v4")
+        }
+        return missing
+    }
+
+    static func runtimeDependencyFileSignal(
+        missingDLLs: [String],
+        missingDotNetMarkers: [String],
+        hasRuntimeDependencyFault: Bool,
+        hasLauncherMetadataSignal: Bool,
+        trainerSupportMode: Bool
+    ) -> Bool {
+        guard hasRuntimeDependencyFault || hasLauncherMetadataSignal || trainerSupportMode else {
+            return false
+        }
+
+        return !missingDLLs.isEmpty || !missingDotNetMarkers.isEmpty
     }
 
     static func hasDLSSRuntimePayload(for bottle: Bottle) -> Bool {

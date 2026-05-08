@@ -55,6 +55,8 @@ export default async function VecPatchPage() {
   const protectedRules = rules.filter((rule) => rule.trust_class === "blockedAntiCheat" || rule.trust_class === "protectedMultiplayer").length;
   const rulesWithRepairs = rules.filter((rule) => rule.dependency_repairs?.length).length;
   const rulesWithLocalProfiles = rules.filter((rule) => rule.local_profile).length;
+  const rulesWithFixIds = rules.filter((rule) => rule.fix_ids?.length || rule.recommended_action).length;
+  const rulesWithKnownIssues = rules.filter((rule) => rule.known_issues?.length).length;
 
   return (
     <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
@@ -94,6 +96,8 @@ export default async function VecPatchPage() {
               ["Protected rules", String(protectedRules)],
               ["Local profile hints", String(rulesWithLocalProfiles)],
               ["Repair-aware rules", String(rulesWithRepairs)],
+              ["Fix-aware rules", String(rulesWithFixIds)],
+              ["Known issue rules", String(rulesWithKnownIssues)],
               ["Signature mode", manifest.metadata?.signature_mode ?? "unknown"],
               ["Generated", formatDate(manifest.generated_at)],
               ["Commit", manifest.commit_sha?.slice(0, 12) ?? "unknown"],
@@ -163,8 +167,25 @@ export default async function VecPatchPage() {
                   active={Boolean(rule.dependency_repairs?.length)}
                 />
               </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <Signal
+                  icon={Wrench}
+                  label="Fix metadata"
+                  value={rule.fix_ids?.length ? rule.fix_ids.join(", ") : rule.recommended_action ?? "none declared"}
+                  active={Boolean(rule.fix_ids?.length || rule.recommended_action)}
+                />
+                <Signal
+                  icon={ShieldAlert}
+                  label="Known issues"
+                  value={rule.known_issues?.length ? rule.known_issues.join(", ") : "none declared"}
+                  active={Boolean(rule.known_issues?.length)}
+                />
+              </div>
               <Separator className="my-5 bg-white/10" />
               <p className="text-sm leading-6 text-muted-foreground">{rule.changelog || "Stable compatibility profile."}</p>
+              {rule.recommended_action ? (
+                <p className="mt-2 text-sm leading-6 text-white/65">Action: {rule.recommended_action}</p>
+              ) : null}
               {rule.official_support_required ? (
                 <div className="mt-4 rounded-2xl border border-[var(--vector-danger)]/25 bg-[var(--vector-danger)]/10 p-4">
                   <div className="flex gap-3">

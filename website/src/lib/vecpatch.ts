@@ -27,6 +27,9 @@ export type VecPatchRule = {
   studio_approved?: boolean;
   local_profile?: string;
   dependency_repairs?: string[];
+  fix_ids?: string[];
+  recommended_action?: string;
+  known_issues?: string[];
   tags?: string[];
   patch_state?: PatchCoverageState;
   support_policy?: string;
@@ -115,7 +118,9 @@ export type CompatibilityEntry = {
   patchVersion: string;
   note: string;
   recommendedAction?: string;
+  recommendedFixes: string[];
   knownIssues?: string[];
+  fixIds: string[];
   hasLocalProfile: boolean;
   localProfile?: string;
   hasRemoteVecPatchRule: boolean;
@@ -172,6 +177,9 @@ const fallbackManifest: VecPatchManifest = {
       risk_level: "low",
       local_profile: "Auto: Minecraft Dungeons",
       dependency_repairs: ["WebView2 auth repair", "media playback compatibility", "Proton-style media/auth markers"],
+      fix_ids: ["repairMediaPlayback", "reapplyVecPatch"],
+      recommended_action: "Run the sign-in/media repair path if auth or intro video fails.",
+      known_issues: ["Microsoft sign-in path can require WebView2/auth cache repair"],
       tags: ["D3D11", "Microsoft Auth", "Media", "local-profile", "remote-rule"],
       patch_state: "remote-rule",
       changelog: "Steam build launches with a D3D12/D3DMetal profile; Microsoft auth remains the known fragile area.",
@@ -190,6 +198,8 @@ const fallbackManifest: VecPatchManifest = {
       risk_level: "low",
       local_profile: "Auto: Content Warning",
       dependency_repairs: ["DXVK payload repair", "runtime DLL mirror validation"],
+      fix_ids: ["reapplyVecPatch"],
+      recommended_action: "Apply the local or VecPatch D3D11 profile.",
       tags: ["D3D11", "DXVK", "Steam", "local-profile", "remote-rule"],
       patch_state: "remote-rule",
       changelog: "DXVK-first D3D11 startup profile.",
@@ -208,6 +218,8 @@ const fallbackManifest: VecPatchManifest = {
       risk_level: "low",
       local_profile: "Auto: Parcel Simulator",
       dependency_repairs: ["DXVK payload repair", "runtime DLL mirror validation"],
+      fix_ids: ["reapplyVecPatch"],
+      recommended_action: "Apply the local or VecPatch D3D11 profile.",
       tags: ["D3D11", "DXVK", "Steam", "local-profile", "remote-rule"],
       patch_state: "remote-rule",
       changelog: "UE profile with launcher-safe overrides.",
@@ -225,6 +237,9 @@ const fallbackManifest: VecPatchManifest = {
       risk_level: "blocked",
       official_support_required: true,
       studio_approved: true,
+      fix_ids: ["exportDiagnosticBundle"],
+      recommended_action: "Use Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC.",
+      known_issues: ["Official anti-cheat support required"],
       tags: ["EAC", "Protected", "Blocked", "official-support-required", "remote-rule"],
       patch_state: "blocked",
       support_policy: "Blocked locally. Official anti-cheat support required.",
@@ -247,6 +262,7 @@ type KnownCompatibilityMetadata = {
   localProfile?: string;
   remoteRuleId?: string;
   dependencyRepairs?: string[];
+  fixIds?: string[];
   tags: string[];
   recommendedAction?: string;
   knownIssues?: string[];
@@ -265,6 +281,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     executableMatch: "highonlife2-win64-shipping.exe",
     localProfile: "Auto: High On Life 2",
     dependencyRepairs: ["FSR/NGX shim validation", "app-scoped D3D override repair"],
+    fixIds: ["reapplyVecPatch"],
     tags: ["UE5", "D3D12", "FSR", "NGX", "local-profile"],
     note: "Local profile exists for the D3D12/D3DMetal path; compatibility remains marked needs-fix until more launch evidence is available.",
     recommendedAction: "Use the local profile and verify the FSR/NGX shim path before treating this as playable.",
@@ -280,6 +297,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     localProfile: "Auto: Parcel Simulator",
     remoteRuleId: "fallback-parcel-simulator",
     dependencyRepairs: ["DXVK payload repair", "runtime DLL mirror validation"],
+    fixIds: ["reapplyVecPatch"],
     tags: ["D3D11", "DXVK", "Steam", "local-profile", "remote-rule"],
     note: "Known working with the stable D3D11 profile and launcher-safe overrides.",
     recommendedAction: "Apply the local or VecPatch D3D11 profile.",
@@ -295,6 +313,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     localProfile: "Auto: Minecraft Dungeons",
     remoteRuleId: "proton-style-minecraft-dungeons-media-auth-v1",
     dependencyRepairs: ["WebView2 auth repair", "media playback compatibility", "Proton-style media/auth markers"],
+    fixIds: ["repairMediaPlayback", "reapplyVecPatch"],
     tags: ["D3D11", "Microsoft Auth", "Media", "auth-repair", "local-profile", "remote-rule"],
     note: "Steam build launches; Microsoft/Xbox auth and WebView plumbing remain the fragile areas.",
     recommendedAction: "Apply the profile and run the sign-in/media repair path if auth or intro video fails.",
@@ -311,6 +330,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     localProfile: "Auto: Content Warning",
     remoteRuleId: "fallback-content-warning",
     dependencyRepairs: ["DXVK payload repair", "runtime DLL mirror validation"],
+    fixIds: ["reapplyVecPatch"],
     tags: ["D3D11", "DXVK", "Steam", "local-profile", "remote-rule"],
     note: "Uses a DXVK-first D3D11 profile with dependency checks for startup stability.",
     recommendedAction: "Apply the local or VecPatch D3D11 profile.",
@@ -324,6 +344,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     executableMatch: "silenthillf-win64-shipping.exe",
     localProfile: "Auto: Silent Hill f",
     dependencyRepairs: ["DXVK payload repair"],
+    fixIds: ["reapplyVecPatch"],
     tags: ["D3D11", "DXVK", "Steam", "boots", "local-profile"],
     note: "Known to boot on the forced DX11 path; DX12 is unstable and this is not advertised as fully playable.",
     recommendedAction: "Use the local DX11 profile and keep expectations at boots/needs-fix until verified.",
@@ -337,6 +358,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     executableMatch: "wemod.exe",
     localProfile: "Auto: WeMod / Wand",
     dependencyRepairs: ["compatibility Wine/wineserver pair", "Electron GPU fallback"],
+    fixIds: ["repairRuntime", "killMismatchedWineserver"],
     tags: ["Electron", "launcher", "runtime-pair", "local-profile", "dependency-repair"],
     note: "Electron UI rendering can still fail; the local profile only captures the safest known launch flags.",
     recommendedAction: "Use the compatibility runtime pair and disable Electron GPU compositing.",
@@ -351,6 +373,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     trustClass: "blockedAntiCheat",
     riskLevel: "blocked",
     remoteRuleId: "fallback-arc-raiders",
+    fixIds: ["exportDiagnosticBundle"],
     tags: ["EAC", "Protected", "Blocked", "official-support-required", "remote-rule"],
     note: "Protected multiplayer title. Local launch is blocked until official Embark/EAC support exists.",
     recommendedAction: "Use Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC.",
@@ -366,6 +389,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     executableMatch: "rainbowsix.exe",
     trustClass: "blockedAntiCheat",
     riskLevel: "blocked",
+    fixIds: ["exportDiagnosticBundle"],
     tags: ["BattlEye", "Protected", "Blocked", "official-support-required"],
     note: "BattlEye-protected launch is blocked for local Vector play unless official support is provided.",
     recommendedAction: "Use a supported Windows host or official remote-play path.",
@@ -382,6 +406,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     steamAppId: "2483190",
     executableMatch: "forzahorizon6.exe",
     localProfile: "Auto: Forza Horizon 6",
+    fixIds: ["reapplyVecPatch"],
     tags: ["DX12", "D3DMetal", "release-dependent", "local-profile"],
     note: "Profile metadata is prepared for the DX12/D3DMetal path, but support is release-build dependent and not claimed as verified.",
     recommendedAction: "Treat as profile metadata only until a released build is tested.",
@@ -395,6 +420,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     executableMatch: "titanfall2.exe",
     localProfile: "Auto: Titanfall 2",
     dependencyRepairs: ["EA App bootstrap repair", "compatibility Wine/wineserver pair"],
+    fixIds: ["repairLauncherDependencies", "killMismatchedWineserver"],
     tags: ["D3D11", "EA App", "launcher", "local-profile", "dependency-repair"],
     note: "Local profile exists, but EA App bootstrap remains the launch risk.",
     recommendedAction: "Repair the EA App bootstrap before treating game launch failures as renderer issues.",
@@ -408,6 +434,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     executableMatch: "eadesktop.exe",
     localProfile: "Auto: EA App",
     dependencyRepairs: ["launcher dependency repair", "compatibility Wine/wineserver pair"],
+    fixIds: ["repairLauncherDependencies", "killMismatchedWineserver"],
     tags: ["EA App", "Origin", "launcher", "local-profile", "dependency-repair"],
     note: "Launcher entry for games that require EA/Origin handoff; it is not a game support claim.",
     recommendedAction: "Run the launcher dependency repair path when the installer or sign-in window fails.",
@@ -420,6 +447,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     steamAppId: "1966720",
     executableMatch: "lethal company.exe",
     localProfile: "Auto: Lethal Company",
+    fixIds: ["reapplyVecPatch"],
     tags: ["DXVK", "Steam", "Verified", "local-profile"],
     note: "Known working baseline profile.",
     recommendedAction: "Use the local baseline profile.",
@@ -432,6 +460,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     steamAppId: "1106840",
     executableMatch: "hydroneer-win64-shipping.exe",
     localProfile: "Auto: Hydroneer",
+    fixIds: ["reapplyVecPatch"],
     tags: ["DXVK", "Steam", "Verified", "local-profile"],
     note: "Known working baseline profile.",
     recommendedAction: "Use the local baseline profile.",
@@ -445,6 +474,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     executableMatch: "factorygamesteam.exe",
     localProfile: "Auto: Satisfactory",
     dependencyRepairs: ["Unreal dependency preset"],
+    fixIds: ["reapplyVecPatch"],
     tags: ["D3D11", "Fullscreen", "Steam", "Verified", "local-profile"],
     note: "DX11 fallback profile for reliable startup.",
     recommendedAction: "Use the local DX11 profile and native fullscreen when possible.",
@@ -458,6 +488,7 @@ const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
     executableMatch: "escapethebackrooms.exe",
     localProfile: "Auto: Escape the Backrooms",
     dependencyRepairs: ["Unreal dependency preset"],
+    fixIds: ["reapplyVecPatch"],
     tags: ["D3D11", "Unreal", "Steam", "Verified", "local-profile"],
     note: "Unreal DX11 fallback profile.",
     recommendedAction: "Use the local DX11 profile and Unreal dependency preset if first launch is unstable.",
@@ -656,6 +687,26 @@ function mergeKnownCompatibilityEntry(
     officialSupportRequired,
     blocked,
   });
+  const fixIds = uniqueStrings([
+    ...(known.fixIds ?? []),
+    ...(remoteEntry?.fixIds ?? []),
+    ...(rule?.fix_ids ?? []),
+  ]);
+  const recommendedAction = blocked
+    ? protectedRecommendedAction(known, remoteEntry)
+    : remoteEntry?.recommendedAction ?? rule?.recommended_action ?? known.recommendedAction;
+  const knownIssues = blocked
+    ? uniqueStrings([
+      ...(known.knownIssues ?? []),
+      ...(remoteEntry?.knownIssues ?? []),
+      ...(rule?.known_issues ?? []),
+      "Official anti-cheat support required",
+    ])
+    : uniqueStrings([
+      ...(known.knownIssues ?? []),
+      ...(remoteEntry?.knownIssues ?? []),
+      ...(rule?.known_issues ?? []),
+    ]);
 
   return {
     game: known.game,
@@ -669,12 +720,10 @@ function mergeKnownCompatibilityEntry(
     riskLevel: blocked ? "blocked" : (known.riskLevel ?? remoteEntry?.riskLevel ?? rule?.risk_level ?? "low"),
     patchVersion: rule?.rule_version ? `v${rule.rule_version}` : remoteEntry?.patchVersion ?? "local",
     note: blocked ? officialSupportNote(known, remoteEntry, rule) : remoteEntry?.note ?? known.note,
-    recommendedAction: blocked
-      ? protectedRecommendedAction(known, remoteEntry)
-      : remoteEntry?.recommendedAction ?? known.recommendedAction,
-    knownIssues: blocked
-      ? uniqueStrings([...(known.knownIssues ?? []), ...(remoteEntry?.knownIssues ?? []), "Official anti-cheat support required"])
-      : uniqueStrings([...(known.knownIssues ?? []), ...(remoteEntry?.knownIssues ?? [])]),
+    recommendedAction,
+    recommendedFixes: recommendedFixesFor(recommendedAction, dependencyRepairs, fixIds),
+    knownIssues,
+    fixIds,
     hasLocalProfile: Boolean(localProfile),
     localProfile: localProfile || undefined,
     hasRemoteVecPatchRule,
@@ -701,6 +750,14 @@ function mergeKnownCompatibilityEntry(
 function compatibilityEntryFromRule(rule: VecPatchRule): CompatibilityEntry {
   const blocked = isBlockedRule(rule);
   const dependencyRepairs = uniqueStrings(rule.dependency_repairs ?? []);
+  const fixIds = uniqueStrings(rule.fix_ids ?? []);
+  const recommendedAction = blocked
+    ? rule.recommended_action
+      ?? "Use Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC."
+    : rule.recommended_action ?? "Apply the VecPatch rule, then verify launch before treating this as supported.";
+  const knownIssues = blocked
+    ? uniqueStrings([...(rule.known_issues ?? []), "Official anti-cheat support required"])
+    : uniqueStrings(rule.known_issues ?? []);
   const hasLocalProfile = Boolean(rule.local_profile);
   const tags = coverageTags({
     tags: rule.tags ?? [],
@@ -725,10 +782,10 @@ function compatibilityEntryFromRule(rule: VecPatchRule): CompatibilityEntry {
     note: blocked
       ? rule.changelog || "Protected multiplayer rule is blocked locally until official support exists."
       : rule.changelog || "VecPatch rule exists; compatibility level has not been human-reviewed.",
-    recommendedAction: blocked
-      ? "Use Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC."
-      : "Apply the VecPatch rule, then verify launch before treating this as supported.",
-    knownIssues: blocked ? ["Official anti-cheat support required"] : [],
+    recommendedAction,
+    recommendedFixes: recommendedFixesFor(recommendedAction, dependencyRepairs, fixIds),
+    knownIssues,
+    fixIds,
     hasLocalProfile,
     localProfile: rule.local_profile,
     hasRemoteVecPatchRule: true,
@@ -853,6 +910,30 @@ function coverageTags({
     officialSupportRequired ? "official-support-required" : "",
     blocked ? "blocked" : "",
   ]);
+}
+
+function recommendedFixesFor(
+  recommendedAction: string | undefined,
+  dependencyRepairs: string[],
+  fixIds: string[],
+) {
+  return uniqueStrings([
+    ...(recommendedAction ? [recommendedAction] : []),
+    ...dependencyRepairs,
+    ...fixIds.map(readableFixId),
+  ]);
+}
+
+function readableFixId(fixId: string) {
+  const labels: Record<string, string> = {
+    exportDiagnosticBundle: "Export diagnostics",
+    killMismatchedWineserver: "Reset mismatched Wine services",
+    repairLauncherDependencies: "Repair launcher dependencies",
+    repairMediaPlayback: "Repair media playback",
+    repairRuntime: "Repair runtime DLL mirror",
+    reapplyVecPatch: "Reapply VecPatch rule",
+  };
+  return labels[fixId] ?? fixId.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
 }
 
 function compatibilityKey(game: string, steamAppId?: string) {
@@ -1006,6 +1087,10 @@ function normalizeRemoteCompatibilityEntry(raw: unknown): CompatibilityEntry {
   const level = normalizeLevel(stringField(entry.compatibility_level) || stringField(entry.level));
   const ruleVersion = numberField(entry.rule_version);
   const dependencyRepairs = arrayField(entry.dependency_repairs);
+  const fixIds = uniqueStrings([
+    ...arrayField(entry.fix_ids),
+    ...arrayField(entry.fixIds),
+  ]);
   const localProfile = stringField(entry.local_profile) || stringField(entry.localProfile);
   const remoteRuleId = stringField(entry.remote_rule_id) || stringField(entry.remoteRuleId) || stringField(entry.rule_id);
   const trustClass = stringField(entry.trust_class) || "singlePlayer";
@@ -1043,7 +1128,12 @@ function normalizeRemoteCompatibilityEntry(raw: unknown): CompatibilityEntry {
     patchVersion: ruleVersion ? `v${ruleVersion}` : stringField(entry.patch_version) || "v1",
     note: stringField(entry.notes) || stringField(entry.note) || "Stable VecPatch profile available.",
     recommendedAction: stringField(entry.recommended_action),
-    knownIssues: arrayField(entry.known_issues),
+    recommendedFixes: recommendedFixesFor(stringField(entry.recommended_action), dependencyRepairs, fixIds),
+    knownIssues: uniqueStrings([
+      ...arrayField(entry.known_issues),
+      ...arrayField(entry.knownIssues),
+    ]),
+    fixIds,
     hasLocalProfile,
     localProfile,
     hasRemoteVecPatchRule,
@@ -1057,6 +1147,26 @@ function normalizeRemoteCompatibilityEntry(raw: unknown): CompatibilityEntry {
     source: stringField(entry.source) || "vecpatch",
     updatedAt: stringField(entry.updated_at),
   };
+}
+
+function recommendedFixesFor(action: string | undefined, dependencyRepairs: string[], fixIds: string[]) {
+  return uniqueStrings([
+    ...dependencyRepairs,
+    ...fixIds.map(readableFixId),
+    action ?? "",
+  ]).slice(0, 4);
+}
+
+function readableFixId(value: string) {
+  const labels: Record<string, string> = {
+    repairRuntime: "Runtime repair",
+    killMismatchedWineserver: "Wineserver reset",
+    reapplyVecPatch: "Reapply VecPatch",
+    repairMediaPlayback: "Media playback repair",
+    repairLauncherDependencies: "Launcher dependency repair",
+    exportDiagnosticBundle: "Diagnostic export",
+  };
+  return labels[value] ?? value;
 }
 
 function normalizeStatus(value: string): CompatibilityEntry["status"] {

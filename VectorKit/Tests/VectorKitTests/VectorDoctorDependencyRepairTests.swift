@@ -90,6 +90,68 @@ final class VectorDoctorDependencyRepairTests: XCTestCase {
         XCTAssertTrue(signals.launcherDetails.contains("Visual C++"))
     }
 
+    func testRemoteMediaRepairSignalMarksMediaRepairWithoutLogFault() throws {
+        let bottle = try makeBottle()
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: [],
+            remoteFixIDs: ["repairMediaPlayback"]
+        )
+
+        XCTAssertTrue(signals.needsMediaRepair)
+        XCTAssertTrue(signals.mediaDetails.contains("Compatibility metadata"))
+    }
+
+    func testRemoteLauncherRepairSurfacesMissingRuntimeDependenciesWithoutLogs() throws {
+        let bottle = try makeBottle()
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: [],
+            remoteFixIDs: ["repairLauncherDependencies"]
+        )
+
+        XCTAssertTrue(signals.needsLauncherDependencyRepair)
+        XCTAssertTrue(signals.needsRuntimeDependencyRepair)
+        XCTAssertTrue(signals.launcherDetails.contains("Compatibility metadata"))
+        XCTAssertTrue(signals.launcherDetails.contains("Visual C++"))
+    }
+
+    func testTrainerSupportSurfacesMissingDotNetRuntimeMarkersWithoutLogs() throws {
+        let bottle = try makeBottle()
+        bottle.settings.trainerSupportMode = true
+
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: []
+        )
+
+        XCTAssertTrue(signals.needsLauncherDependencyRepair)
+        XCTAssertTrue(signals.needsRuntimeDependencyRepair)
+        XCTAssertTrue(signals.launcherDetails.contains(".NET"))
+    }
+
+    func testDXVKPartialDeploymentFlagsMissingSyswow64Payload() throws {
+        let bottle = try makeBottle()
+        bottle.settings.graphicsBackendMode = .dxvk
+        try writePlaceholders(["dxgi.dll", "d3d11.dll", "d3d10core.dll"], in: "system32", bottle: bottle)
+
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: []
+        )
+
+        XCTAssertTrue(signals.needsGraphicsPayloadRepair)
+        XCTAssertTrue(signals.graphicsDetails.contains("syswow64/dxgi.dll"))
+    }
+
     private func makeBottle() throws -> Bottle {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "VectorDoctorDependencyRepairTests-")
@@ -105,6 +167,20 @@ final class VectorDoctorDependencyRepairTests: XCTestCase {
         let bottle = Bottle(bottleUrl: url, inFlight: true, isAvailable: true)
         bottle.settings.name = "Vector Doctor Dependency Repair Test"
         return bottle
+    }
+
+    private func writePlaceholders(_ names: [String], in directory: String, bottle: Bottle) throws {
+        let targetDirectory = bottle.url
+            .appending(path: "drive_c")
+            .appending(path: "windows")
+            .appending(path: directory)
+        for name in names {
+            try "placeholder".write(
+                to: targetDirectory.appending(path: name),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
     }
 
     private func healthyRuntime() -> VectorDoctorRuntimeSnapshot {

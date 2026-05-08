@@ -447,6 +447,8 @@ public struct DispatchPatchStatus: Sendable {
     public var effectiveRulesDigest: String
     public var recommendedBackend: GraphicsBackendMode?
     public var fallbackBackend: GraphicsBackendMode?
+    public var recommendedBackendReason: String
+    public var fallbackBackendReason: String
     public var lastFetchedAt: Date?
     public var lastAppliedVersion: Int
     public var lastAppliedGeneratedAt: String
@@ -477,6 +479,8 @@ public struct DispatchPatchStatus: Sendable {
         effectiveRulesDigest: String = "",
         recommendedBackend: GraphicsBackendMode? = nil,
         fallbackBackend: GraphicsBackendMode? = nil,
+        recommendedBackendReason: String = "",
+        fallbackBackendReason: String = "",
         lastFetchedAt: Date? = nil,
         lastAppliedVersion: Int = 0,
         lastAppliedGeneratedAt: String = "",
@@ -497,6 +501,8 @@ public struct DispatchPatchStatus: Sendable {
         self.effectiveRulesDigest = effectiveRulesDigest
         self.recommendedBackend = recommendedBackend
         self.fallbackBackend = fallbackBackend
+        self.recommendedBackendReason = recommendedBackendReason
+        self.fallbackBackendReason = fallbackBackendReason
         self.lastFetchedAt = lastFetchedAt
         self.lastAppliedVersion = lastAppliedVersion
         self.lastAppliedGeneratedAt = lastAppliedGeneratedAt
@@ -972,9 +978,12 @@ public enum BottleGamingModeManager {
         let rules = await DispatchPatchService.shared.rules(for: bottle, forceRefresh: false)
         let status = await DispatchPatchService.shared.status(for: bottle, checkRemote: false)
         let effectiveRulesDigest = status.effectiveRulesDigest.trimmingCharacters(in: .whitespacesAndNewlines)
-        let shouldApplyDispatchChanges = launchState.dispatchProfileCount == 0
-            || effectiveRulesDigest != launchState.appliedRulesDigest
-            || (rules.isEmpty && launchState.dispatchProfileCount > 0)
+        let shouldApplyDispatchChanges = shouldApplyDispatchRules(
+            rules,
+            currentDispatchProfileCount: launchState.dispatchProfileCount,
+            effectiveRulesDigest: effectiveRulesDigest,
+            appliedRulesDigest: launchState.appliedRulesDigest
+        )
 
         if shouldApplyDispatchChanges {
             await MainActor.run {
@@ -986,6 +995,27 @@ public enum BottleGamingModeManager {
             }
         }
         await updateInferredBackend(using: rules, for: bottle)
+    }
+
+    static func shouldApplyDispatchRules(
+        _ rules: [DispatchPatchRule],
+        currentDispatchProfileCount: Int,
+        effectiveRulesDigest: String,
+        appliedRulesDigest: String
+    ) -> Bool {
+        let effectiveDigest = effectiveRulesDigest.trimmingCharacters(in: .whitespacesAndNewlines)
+        let appliedDigest = appliedRulesDigest.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if rules.isEmpty {
+            return currentDispatchProfileCount > 0
+        }
+        if currentDispatchProfileCount == 0 {
+            return true
+        }
+        guard !effectiveDigest.isEmpty else {
+            return true
+        }
+        return effectiveDigest != appliedDigest
     }
 
     public static func ensureKnownGameProfiles(in bottle: Bottle) {
@@ -1255,7 +1285,7 @@ public enum BottleGamingModeManager {
         let protectedFilteredRules = rules.filter {
             VectorProtectedTitlePolicyEngine.ruleAllowed($0, in: bottle)
         }
-        let selectedRules = selectRuleWinners(from: protectedFilteredRules)
+        let selectedRules = uniqueDispatchRules(selectRuleWinners(from: protectedFilteredRules))
         let shouldAttachBackendOverrides = bottle.settings.graphicsBackendMode == .auto
         let newDispatchProfiles = selectedRules.map { rule in
             BottleGameProfile(
@@ -1316,9 +1346,12 @@ public enum BottleGamingModeManager {
         let effectiveRulesDigest = status.effectiveRulesDigest.trimmingCharacters(in: .whitespacesAndNewlines)
         let appliedRulesDigest = bottle.settings.patchDispatchLastAppliedRulesDigest
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let shouldApplyDispatchChanges = currentDispatchProfileCount == 0
-            || effectiveRulesDigest != appliedRulesDigest
-            || (rules.isEmpty && currentDispatchProfileCount > 0)
+        let shouldApplyDispatchChanges = shouldApplyDispatchRules(
+            rules,
+            currentDispatchProfileCount: currentDispatchProfileCount,
+            effectiveRulesDigest: effectiveRulesDigest,
+            appliedRulesDigest: appliedRulesDigest
+        )
 
         if shouldApplyDispatchChanges {
             saveRollbackSnapshot(for: bottle)
@@ -1380,26 +1413,67 @@ public enum BottleGamingModeManager {
     }
 
     private static func upsertProfile(_ profile: BottleGameProfile, in profiles: inout [BottleGameProfile]) {
-        if let index = profiles.firstIndex(where: { existing in
-            let sameName = existing.name.caseInsensitiveCompare(profile.name) == .orderedSame
-            let sameExecutable = !profile.executableMatch.isEmpty
-                && existing.executableMatch.caseInsensitiveCompare(profile.executableMatch) == .orderedSame
-            let sameAppID = !profile.steamAppID.isEmpty && existing.steamAppID == profile.steamAppID
-            return sameName || (sameExecutable && sameAppID)
-        }) {
-            var updated = profile
-            updated.id = profiles[index].id
-            profiles[index] = updated
-        } else {
-            profiles.append(profile)
+        var didUpsert = false
+        var rebuilt: [BottleGameProfile] = []
+
+        for existing in profiles {
+            guard isManagedProfile(existing),
+                  profilesMatchForManagedUpsert(existing, profile) else {
+                rebuilt.append(existing)
+                continue
+            }
+
+            if !didUpsert {
+                var updated = profile
+                updated.id = existing.id
+                rebuilt.append(updated)
+                didUpsert = true
+            }
         }
+
+        if !didUpsert {
+            rebuilt.append(profile)
+        }
+
+        profiles = rebuilt
     }
 
     private static func profileMergeKey(_ profile: BottleGameProfile) -> String {
-        let name = profile.name.lowercased()
-        let executable = profile.executableMatch.lowercased()
-        let appID = profile.steamAppID.lowercased()
+        let dispatchRuleID = profile.dispatchRuleID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        if !dispatchRuleID.isEmpty {
+            return "dispatch-rule:\(dispatchRuleID)"
+        }
+
+        let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let executable = profile.executableMatch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let appID = profile.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return "\(name)|\(executable)|\(appID)"
+    }
+
+    private static func isManagedProfile(_ profile: BottleGameProfile) -> Bool {
+        let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.hasPrefix("Auto:") || name.hasPrefix(dispatchProfileNamePrefix)
+    }
+
+    private static func profilesMatchForManagedUpsert(
+        _ existing: BottleGameProfile,
+        _ incoming: BottleGameProfile
+    ) -> Bool {
+        if profileMergeKey(existing) == profileMergeKey(incoming) {
+            return true
+        }
+
+        let incomingExecutable = incoming.executableMatch.trimmingCharacters(in: .whitespacesAndNewlines)
+        let existingExecutable = existing.executableMatch.trimmingCharacters(in: .whitespacesAndNewlines)
+        let incomingAppID = incoming.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let existingAppID = existing.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return !incomingExecutable.isEmpty
+            && !incomingAppID.isEmpty
+            && existingExecutable.caseInsensitiveCompare(incomingExecutable) == .orderedSame
+            && existingAppID == incomingAppID
     }
 
     private static func rollbackSnapshotURL(for bottle: Bottle) -> URL {
@@ -1456,6 +1530,30 @@ public enum BottleGamingModeManager {
 
         winners.sort(by: shouldPreferRule(_:over:))
         return winners
+    }
+
+    static func uniqueDispatchRules(_ rules: [DispatchPatchRule]) -> [DispatchPatchRule] {
+        var seenKeys: Set<String> = []
+        var uniqueRules: [DispatchPatchRule] = []
+
+        for rule in rules {
+            let key = dispatchRuleApplicationKey(rule)
+            guard !seenKeys.contains(key) else {
+                continue
+            }
+            seenKeys.insert(key)
+            uniqueRules.append(rule)
+        }
+
+        return uniqueRules
+    }
+
+    private static func dispatchRuleApplicationKey(_ rule: DispatchPatchRule) -> String {
+        let ruleID = rule.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !ruleID.isEmpty {
+            return "rule:\(ruleID)"
+        }
+        return rule.mergeIdentity
     }
 
     private static func sourcePrecedence(_ source: DispatchPatchRuleSource) -> Int {
@@ -1719,6 +1817,18 @@ public actor DispatchPatchService {
         let backendHint = inferredRecommendation?.primary ?? effectiveRules.compactMap(\.graphicsBackend).first
         let fallbackBackendHint = inferredRecommendation?.fallback
             ?? effectiveRules.compactMap(\.fallbackGraphicsBackend).first
+        let backendReason = inferredRecommendation?.reason
+            ?? backendHint.map { "Effective patch rules recommend \($0.rawValue)." }
+            ?? ""
+        let fallbackBackendReason: String
+        if let inferredFallback = inferredRecommendation?.fallback {
+            fallbackBackendReason =
+                "Fallback \(inferredFallback.rawValue) is paired with the dispatch recommendation."
+        } else if let firstRuleFallback = effectiveRules.compactMap(\.fallbackGraphicsBackend).first {
+            fallbackBackendReason = "Effective patch rules provide \(firstRuleFallback.rawValue) as fallback."
+        } else {
+            fallbackBackendReason = ""
+        }
         let fetchedAt = cached?.fetchedAt
 
         let appliedVersion = bottle.settings.patchDispatchLastAppliedVersion
@@ -1759,6 +1869,8 @@ public actor DispatchPatchService {
             effectiveRulesDigest: effectiveRulesDigest,
             recommendedBackend: backendHint,
             fallbackBackend: fallbackBackendHint,
+            recommendedBackendReason: backendReason,
+            fallbackBackendReason: fallbackBackendReason,
             lastFetchedAt: fetchedAt,
             lastAppliedVersion: appliedVersion,
             lastAppliedGeneratedAt: appliedGeneratedAt,

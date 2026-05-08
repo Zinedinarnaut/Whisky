@@ -59,7 +59,12 @@ export function CompatibilityExplorer({ entries }: CompatibilityExplorerProps) {
         entry.localProfile ?? "",
         entry.remoteRuleId ?? "",
         entry.dependencyRepairs.join(" "),
+        entry.recommendedFixes.join(" "),
+        entry.knownIssues?.join(" ") ?? "",
+        entry.fixIds.join(" "),
         entry.tags.join(" "),
+        entry.patchState,
+        entry.riskLevel,
         entry.supportPolicy ?? "",
       ].join("\n").toLowerCase().includes(normalizedQuery);
       const matchesStatus = status === all || entry.status === status;
@@ -121,16 +126,16 @@ export function CompatibilityExplorer({ entries }: CompatibilityExplorerProps) {
           <CardTitle className="text-white">Live compatibility database</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="grid grid-cols-[1.05fr_0.65fr_1.15fr_1.45fr] border-b border-white/10 px-5 py-3 text-xs uppercase tracking-[0.18em] text-muted-foreground max-lg:hidden">
+          <div className="grid grid-cols-[1.05fr_0.65fr_1.2fr_1.4fr] border-b border-white/10 px-5 py-3 text-xs uppercase tracking-[0.18em] text-muted-foreground max-lg:hidden">
             <span>Game</span>
             <span>Status</span>
-            <span>Patch coverage</span>
-            <span>Notes</span>
+            <span>Patch surface</span>
+            <span>Fix / issue metadata</span>
           </div>
           {filteredEntries.map((entry) => (
             <div
               key={`${entry.game}-${entry.patchVersion}-${entry.remoteRuleId ?? entry.localProfile ?? "metadata"}`}
-              className="grid gap-4 border-b border-white/10 px-5 py-5 last:border-b-0 lg:grid-cols-[1.05fr_0.65fr_1.15fr_1.45fr] lg:items-start"
+              className="grid gap-4 border-b border-white/10 px-5 py-5 last:border-b-0 lg:grid-cols-[1.05fr_0.65fr_1.2fr_1.4fr] lg:items-start"
             >
               <div>
                 <span className="font-medium text-white">{entry.game}</span>
@@ -153,33 +158,73 @@ export function CompatibilityExplorer({ entries }: CompatibilityExplorerProps) {
                 </Badge>
               </span>
               <div className="space-y-2 text-sm text-muted-foreground">
+                <PatchSurfaceLine label="Backend" value={entry.backend} strong />
+                <PatchSurfaceLine label="Patch state" value={`${entry.patchState} · ${entry.patchVersion}`} />
                 <CoverageLine icon={CheckCircle2} active={entry.hasLocalProfile} label="Local profile" value={entry.localProfile} />
                 <CoverageLine icon={RadioTower} active={entry.hasRemoteVecPatchRule} label="Remote rule" value={entry.remoteRuleId} />
-                <CoverageLine
-                  icon={Wrench}
-                  active={entry.hasDependencyRepairs}
-                  label="Repairs"
-                  value={entry.dependencyRepairs.length ? entry.dependencyRepairs.join(", ") : undefined}
-                />
                 {entry.officialSupportRequired ? (
                   <CoverageLine icon={ShieldAlert} active label="Policy" value={entry.supportPolicy ?? "Official support required"} danger />
                 ) : null}
               </div>
               <div>
                 <p className="text-sm leading-6 text-muted-foreground">{entry.note}</p>
-                {entry.recommendedAction ? (
-                  <p className="mt-2 text-xs leading-5 text-white/60">Action: {entry.recommendedAction}</p>
-                ) : null}
-                {entry.knownIssues?.length ? (
-                  <p className="mt-2 text-xs leading-5 text-[var(--vector-warning)]/80">
-                    Known issue: {entry.knownIssues.join(", ")}
-                  </p>
-                ) : null}
+                <div className="mt-3 grid gap-2">
+                  <MetadataCallout
+                    icon={Wrench}
+                    label="Fix metadata"
+                    value={entry.recommendedFixes.length ? entry.recommendedFixes.join(", ") : "No dedicated fix path"}
+                    active={entry.recommendedFixes.length > 0}
+                  />
+                  <MetadataCallout
+                    icon={ShieldAlert}
+                    label="Known issue"
+                    value={entry.knownIssues?.length ? entry.knownIssues.join(", ") : "No known issue flagged"}
+                    active={Boolean(entry.knownIssues?.length)}
+                    danger={entry.status === "Blocked"}
+                  />
+                </div>
               </div>
             </div>
           ))}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function PatchSurfaceLine({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+      <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
+      <span className={strong ? "font-mono text-xs uppercase tracking-[0.12em] text-white" : "font-mono text-xs text-white/70"}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MetadataCallout({
+  icon: Icon,
+  label,
+  value,
+  active,
+  danger,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  active: boolean;
+  danger?: boolean;
+}) {
+  const color = danger ? "text-[var(--vector-danger)]" : active ? "text-[var(--vector-warning)]" : "text-muted-foreground";
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+      <div className="flex items-center gap-2">
+        <Icon className={`size-3.5 ${color}`} />
+        <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
+      </div>
+      <p className={`mt-2 text-xs leading-5 ${active ? "text-white/70" : "text-muted-foreground"}`}>{value}</p>
     </div>
   );
 }

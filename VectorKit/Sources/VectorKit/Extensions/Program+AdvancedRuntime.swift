@@ -339,6 +339,9 @@ extension Program {
     private static let dlssTranslationMarkerEnvironmentKey = "VECTOR_DLSS_TRANSLATION_ACTIVE"
     private static let effectiveBackendEnvironmentKey = "VECTOR_EFFECTIVE_GRAPHICS_BACKEND"
     private static let effectiveFallbackBackendEnvironmentKey = "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK"
+    private static let effectiveBackendReasonEnvironmentKey = "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_REASON"
+    private static let effectiveFallbackBackendReasonEnvironmentKey =
+        "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK_REASON"
     private static let highOnLife2EngineIniMarker = "; Vector HighOnLife2 compatibility overrides"
     private static let highOnLife2EngineIniBlock = """
 ; Vector HighOnLife2 compatibility overrides
@@ -370,6 +373,13 @@ r.FidelityFX.DLSSFG.Enabled=0
 [/Script/WebBrowserWidget.WebBrowserSettings]
 bCEFGPUAcceleration=False
 """
+
+    private struct GraphicsBackendSelection {
+        let primary: GraphicsBackendMode
+        let fallback: GraphicsBackendMode?
+        let reason: String
+        let fallbackReason: String
+    }
 
     func applyBottleRuntimeSelection(to environment: inout [String: String]) {
         switch bottle.settings.runtimeSelection {
@@ -2735,10 +2745,13 @@ bCEFGPUAcceleration=False
 
         let selection = resolveSmartGraphicsBackendSelection(using: environment)
         environment[Self.effectiveBackendEnvironmentKey] = selection.primary.rawValue
+        environment[Self.effectiveBackendReasonEnvironmentKey] = selection.reason
         if let fallback = selection.fallback {
             environment[Self.effectiveFallbackBackendEnvironmentKey] = fallback.rawValue
+            environment[Self.effectiveFallbackBackendReasonEnvironmentKey] = selection.fallbackReason
         } else {
             environment.removeValue(forKey: Self.effectiveFallbackBackendEnvironmentKey)
+            environment.removeValue(forKey: Self.effectiveFallbackBackendReasonEnvironmentKey)
         }
 
         applyResolvedGraphicsBackendEnvironment(selection.primary, to: &environment)
@@ -2746,42 +2759,85 @@ bCEFGPUAcceleration=False
 
     private func resolveSmartGraphicsBackendSelection(
         using environment: [String: String]
-    ) -> (primary: GraphicsBackendMode, fallback: GraphicsBackendMode?) {
+    ) -> GraphicsBackendSelection {
+        let configuredMode = bottle.settings.graphicsBackendMode
+        if configuredMode != .auto {
+            return GraphicsBackendSelection(
+                primary: configuredMode,
+                fallback: nil,
+                reason: "Explicit bottle graphics backend selection.",
+                fallbackReason: ""
+            )
+        }
+
         if let explicitBackend = backendMode(from: environment[Self.effectiveBackendEnvironmentKey]),
            explicitBackend != .auto {
             let fallback = backendMode(from: environment[Self.effectiveFallbackBackendEnvironmentKey])
-            return (explicitBackend, fallback)
-        }
-
-        let configuredMode = bottle.settings.graphicsBackendMode
-        if configuredMode != .auto {
-            return (configuredMode, nil)
+            return GraphicsBackendSelection(
+                primary: explicitBackend,
+                fallback: fallback,
+                reason: environment[Self.effectiveBackendReasonEnvironmentKey]
+                    ?? "Profile or dispatch environment selected \(explicitBackend.rawValue).",
+                fallbackReason: fallback.map {
+                    environment[Self.effectiveFallbackBackendReasonEnvironmentKey]
+                        ?? "Fallback \($0.rawValue) was provided with the profile or dispatch backend."
+                } ?? ""
+            )
         }
 
         if let profile = resolvedGameProfile(),
            let backend = profile.graphicsBackendOverride,
            backend != .auto {
-            return (backend, profile.fallbackGraphicsBackend)
+            return GraphicsBackendSelection(
+                primary: backend,
+                fallback: profile.fallbackGraphicsBackend,
+                reason: "Game profile \(profile.name) selected \(backend.rawValue).",
+                fallbackReason: profile.fallbackGraphicsBackend.map {
+                    "Game profile \(profile.name) uses \($0.rawValue) as fallback."
+                } ?? ""
+            )
         }
 
         if let inferredMode = bottle.settings.inferredGraphicsBackendMode,
            inferredMode != .auto {
-            return (inferredMode, bottle.settings.inferredFallbackGraphicsBackendMode)
+            return GraphicsBackendSelection(
+                primary: inferredMode,
+                fallback: bottle.settings.inferredFallbackGraphicsBackendMode,
+                reason: "Patch dispatch inferred \(inferredMode.rawValue) for this bottle.",
+                fallbackReason: bottle.settings.inferredFallbackGraphicsBackendMode.map {
+                    "Patch dispatch paired \($0.rawValue) as fallback."
+                } ?? ""
+            )
         }
 
         if bottle.settings.dlssRuntimeTranslationEnabled
             || isTruthyEnvironmentValue(environment[Self.dlssTranslationMarkerEnvironmentKey]) {
-            return (.dxmt, .dxvk)
+            return GraphicsBackendSelection(
+                primary: .dxmt,
+                fallback: .dxvk,
+                reason: "DLSS translation requires the DXMT graphics route.",
+                fallbackReason: "DXVK is retained as the fallback when DXMT translation is unavailable."
+            )
         }
 
         if shouldApplyInstallerCompatibilityMode || shouldApplyElectronWindowCompatibility {
-            return (.wined3d, .dxvk)
+            return GraphicsBackendSelection(
+                primary: .wined3d,
+                fallback: .dxvk,
+                reason: "Installer or Electron compatibility mode prefers WineD3D.",
+                fallbackReason: "DXVK remains the fallback after compatibility-mode launch issues are cleared."
+            )
         }
 
         let activeSteamAppID = bottle.settings.activeSteamAppID
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if shouldApplyForzaHorizon6Compatibility(activeSteamAppID: activeSteamAppID) {
-            return (.d3dMetal, .dxvk)
+            return GraphicsBackendSelection(
+                primary: .d3dMetal,
+                fallback: .dxvk,
+                reason: "Known Forza Horizon 6 profile prefers D3DMetal for D3D12.",
+                fallbackReason: "DXVK is the fallback for non-D3D12 fallback launches."
+            )
         }
 
         let knownD3D11Target = shouldApplyHighOnLife2Compatibility(activeSteamAppID: activeSteamAppID)
@@ -2796,14 +2852,31 @@ bCEFGPUAcceleration=False
             || shouldApplySilentHillFCompatibility(activeSteamAppID: activeSteamAppID)
             || shouldApplyOriginCompatibility
         if knownD3D11Target || bottle.settings.forceD3D11Compatibility {
-            return (.dxvk, .wined3d)
+            return GraphicsBackendSelection(
+                primary: .dxvk,
+                fallback: .wined3d,
+                reason: "Known D3D11 compatibility profile selected DXVK.",
+                fallbackReason: "WineD3D is retained as the safe fallback for D3D11 compatibility patches."
+            )
         }
 
         if let inferred = inferBackendFromDLLOverrides(environment["WINEDLLOVERRIDES"]) {
-            return inferred
+            return GraphicsBackendSelection(
+                primary: inferred.primary,
+                fallback: inferred.fallback,
+                reason: "Inferred graphics backend from WINEDLLOVERRIDES.",
+                fallbackReason: inferred.fallback.map {
+                    "Fallback \($0.rawValue) was inferred from WINEDLLOVERRIDES."
+                } ?? ""
+            )
         }
 
-        return (.dxvk, .wined3d)
+        return GraphicsBackendSelection(
+            primary: .dxvk,
+            fallback: .wined3d,
+            reason: "Default automatic graphics backend selection.",
+            fallbackReason: "WineD3D is the default fallback for automatic DXVK routing."
+        )
     }
 
     private func applyResolvedGraphicsBackendEnvironment(
@@ -2906,7 +2979,9 @@ bCEFGPUAcceleration=False
         guard !normalized.isEmpty else {
             return nil
         }
-        return GraphicsBackendMode(rawValue: normalized)
+        return GraphicsBackendMode.allCases.first {
+            $0.rawValue.lowercased() == normalized
+        }
     }
 
     private func isTruthyEnvironmentValue(_ value: String?) -> Bool {

@@ -24,6 +24,8 @@ export default async function CompatibilityPage() {
   const localProfiles = entries.filter((entry) => entry.hasLocalProfile).length;
   const remoteRules = entries.filter((entry) => entry.hasRemoteVecPatchRule).length;
   const dependencyRepairs = entries.filter((entry) => entry.hasDependencyRepairs).length;
+  const fixAware = entries.filter((entry) => entry.recommendedFixes.length || entry.fixIds.length).length;
+  const knownIssues = entries.filter((entry) => entry.knownIssues?.length).length;
 
   return (
     <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
@@ -37,8 +39,8 @@ export default async function CompatibilityPage() {
           </h1>
           <p className="mt-5 text-lg leading-8 text-muted-foreground">
             This page merges live VecPatch rules with the local known-game matrix. It separates
-            local profiles, remote rules, and dependency repairs so metadata does not become a
-            fake support claim.
+            local profiles, remote rules, backend intent, fix metadata, and known issues so
+            metadata does not become a fake support claim.
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
             {[
@@ -75,14 +77,14 @@ export default async function CompatibilityPage() {
           <Sparkles className="size-5 text-[var(--vector-signal)]" />
           <h2 className="mt-5 font-semibold text-white">Local profile aware</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {localProfiles} entries have a local Vector profile, and {dependencyRepairs} expose dedicated repair guidance instead of burying it in notes.
+            {localProfiles} entries have a local Vector profile, {dependencyRepairs} expose dependency repair guidance, and {fixAware} publish explicit fix metadata.
           </p>
         </Card>
         <Card className="border-white/10 bg-white/[0.035] p-5">
           <ShieldAlert className="size-5 text-[var(--vector-warning)]" />
-          <h2 className="mt-5 font-semibold text-white">Protected titles stay blocked</h2>
+          <h2 className="mt-5 font-semibold text-white">Known issues stay visible</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {blocked} protected or blocked entries require official support before local play. Last generated: {formatDate(compatibility.generatedAt)}.
+            {knownIssues} entries expose known issue metadata. {blocked} protected or blocked entries require official support before local play. Last generated: {formatDate(compatibility.generatedAt)}.
           </p>
           <Button variant="outline" className="mt-5 border-white/15 bg-black/20 text-white hover:bg-white/[0.08]" asChild>
             <Link href="/vecpatch">Inspect patch rules</Link>

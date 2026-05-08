@@ -33,7 +33,10 @@ enum WebView2RuntimeInstallResult: Sendable {
     }
 }
 
+// swiftlint:disable:next type_body_length
 enum WebView2RuntimeInstaller {
+    typealias ProgressHandler = (String) async -> Void
+
     private static let installerDownloadURL: URL = {
         guard let url = URL(string: "https://go.microsoft.com/fwlink/?LinkId=2124701") else {
             fatalError("Invalid WebView2 installer URL")
@@ -55,15 +58,22 @@ enum WebView2RuntimeInstaller {
         cacheDirectory.appending(path: installerFileName)
     }
 
-    static func installIfNeeded(for bottle: Bottle) async throws -> WebView2RuntimeInstallResult {
+    static func installIfNeeded(
+        for bottle: Bottle,
+        progress: ProgressHandler? = nil
+    ) async throws -> WebView2RuntimeInstallResult {
+        await progress?("Checking for an existing WebView2 runtime")
         if hasRuntime(in: bottle) {
+            await progress?("WebView2 runtime is already installed")
             return .alreadyInstalled
         }
 
-        let installerURL = try await cachedInstaller()
+        let installerURL = try await cachedInstaller(progress: progress)
         let environment = runtimeOverrideEnvironment()
+        await progress?("Stopping stale Wine services before WebView2 setup")
         await shutDownKnownWineservers(for: bottle)
 
+        await progress?("Running the WebView2 installer")
         try await withTimeout(seconds: installerTimeout, reason: "WebView2 installer timed out.") {
             _ = try await Wine.runWine(
                 [installerURL.path(percentEncoded: false), "/silent", "/install"],
@@ -72,8 +82,10 @@ enum WebView2RuntimeInstaller {
                 collectOutput: false
             )
         }
+        await progress?("Waiting for WebView2 setup to finish")
         try await waitForInstallerCompletion(for: bottle, environment: environment)
 
+        await progress?("Validating WebView2 runtime installation")
         guard hasRuntime(in: bottle) else {
             throw NSError(
                 domain: "Vector.WebView2RuntimeInstaller",
@@ -87,14 +99,16 @@ enum WebView2RuntimeInstaller {
         return .installed
     }
 
-    private static func cachedInstaller() async throws -> URL {
+    private static func cachedInstaller(progress: ProgressHandler?) async throws -> URL {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
 
         if isUsableCachedInstaller(cachedInstallerURL) {
+            await progress?("Using cached WebView2 installer")
             return cachedInstallerURL
         }
 
+        await progress?("Downloading WebView2 runtime installer")
         let request = URLRequest(
             url: installerDownloadURL,
             cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
@@ -117,7 +131,9 @@ enum WebView2RuntimeInstaller {
             throw NSError(
                 domain: "Vector.WebView2RuntimeInstaller",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Downloaded WebView2 installer was incomplete."]
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Downloaded WebView2 installer was incomplete or not executable."
+                ]
             )
         }
         return cachedInstallerURL
@@ -128,7 +144,18 @@ enum WebView2RuntimeInstaller {
               let fileSize = values.fileSize else {
             return false
         }
-        return fileSize > 1_000_000
+        guard fileSize > 1_000_000,
+              let fileHandle = try? FileHandle(forReadingFrom: url) else {
+            return false
+        }
+        defer {
+            try? fileHandle.close()
+        }
+
+        guard let header = try? fileHandle.read(upToCount: 2) else {
+            return false
+        }
+        return header == Data([0x4D, 0x5A])
     }
 
     private static func runtimeOverrideEnvironment() -> [String: String] {

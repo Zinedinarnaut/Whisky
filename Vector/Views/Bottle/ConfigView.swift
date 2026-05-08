@@ -165,6 +165,12 @@ struct ConfigView: View {
                         }
                     }
 
+                    if snapshotInFlight, !snapshotMessage.isEmpty {
+                        Text(snapshotMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     ForEach(missingDependencyFixes) { fix in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(fix.title)
@@ -176,6 +182,7 @@ struct ConfigView: View {
                                 applyMissingDependencyFix(fix.id)
                             }
                             .buttonStyle(.bordered)
+                            .disabled(snapshotInFlight || environmentRepairInFlight)
                         }
                         .padding(.vertical, 4)
                     }
@@ -1189,23 +1196,35 @@ struct ConfigView: View {
         switch fixID {
         case .repairRuntime:
             let plan = DependencyRepairPlan(fixIDs: [.runtimeDLLMirror], includeRuntimeDLLRepair: true)
-            performDependencyRepair(plan, action: "Vector Doctor runtime repair", trackEnvironmentRepair: false)
-            vectorDoctorFixInFlight = nil
+            performDependencyRepair(
+                plan,
+                action: "Vector Doctor runtime repair",
+                trackEnvironmentRepair: false,
+                vectorDoctorFixID: fixID
+            )
         case .killMismatchedWineserver:
             killMismatchedWineserverFromDoctor()
         case .reapplyVecPatch:
             runDispatchSync(forceRefresh: true)
         case .repairMediaPlayback:
             let plan = DependencyRepairPlan(fixIDs: [.mediaPlayback], includeRuntimeDLLRepair: true)
-            performDependencyRepair(plan, action: "Vector Doctor media playback repair", trackEnvironmentRepair: false)
-            vectorDoctorFixInFlight = nil
+            performDependencyRepair(
+                plan,
+                action: "Vector Doctor media playback repair",
+                trackEnvironmentRepair: false,
+                vectorDoctorFixID: fixID
+            )
         case .repairLauncherDependencies:
             let plan = DependencyRepairPlan(
                 fixIDs: [.dotNet, .visualCpp, .edgeWebView2Auth],
                 includeRuntimeDLLRepair: false
             )
-            performDependencyRepair(plan, action: "Vector Doctor launcher dependency repair", trackEnvironmentRepair: false)
-            vectorDoctorFixInFlight = nil
+            performDependencyRepair(
+                plan,
+                action: "Vector Doctor launcher dependency repair",
+                trackEnvironmentRepair: false,
+                vectorDoctorFixID: fixID
+            )
         case .exportDiagnosticBundle:
             exportVectorDoctorReport()
         }
@@ -1374,7 +1393,11 @@ struct ConfigView: View {
                 notes.append("cleared \(deletedCacheItems) embedded browser auth cache items")
             }
             do {
-                let result = try await WebView2RuntimeInstaller.installIfNeeded(for: targetBottle)
+                let result = try await WebView2RuntimeInstaller.installIfNeeded(for: targetBottle) { phase in
+                    await MainActor.run {
+                        snapshotMessage = "Minecraft Dungeons auth reset: \(phase)"
+                    }
+                }
                 notes.append(result.note)
             } catch {
                 notes.append("WebView2 automatic install failed: \(error.localizedDescription)")
@@ -2061,10 +2084,14 @@ struct ConfigView: View {
     private func performDependencyRepair(
         _ plan: DependencyRepairPlan,
         action: String,
-        trackEnvironmentRepair: Bool
+        trackEnvironmentRepair: Bool,
+        vectorDoctorFixID: VectorDoctorFixID? = nil
     ) {
         guard !plan.isEmpty else {
             snapshotMessage = "No missing dependency repairs were needed."
+            if let vectorDoctorFixID, vectorDoctorFixInFlight == vectorDoctorFixID {
+                vectorDoctorFixInFlight = nil
+            }
             return
         }
 
@@ -2073,12 +2100,24 @@ struct ConfigView: View {
             environmentRepairInFlight = true
         }
         snapshotInFlight = true
+        snapshotMessage = "Starting \(action)..."
 
         Task.detached(priority: .userInitiated) {
+            func publish(_ step: String) async {
+                await MainActor.run {
+                    snapshotMessage = "\(action): \(step)"
+                    if let vectorDoctorFixID, vectorDoctorFixInFlight == vectorDoctorFixID {
+                        vectorDoctorStatusMessage = snapshotMessage
+                    }
+                }
+            }
+
+            await publish("creating safety snapshot if enabled")
             let snapshotNote = await Self.createAutoSnapshotIfEnabled(for: targetBottle, action: action)
             var repairNotes: [String] = []
 
             if plan.repairRuntimeDLLMirror {
+                await publish("validating runtime DLL mirror")
                 do {
                     try Wine.repairRuntimeSystemDLLMirror(for: targetBottle)
                     repairNotes.append("validated the runtime DLL mirror")
@@ -2088,6 +2127,7 @@ struct ConfigView: View {
             }
 
             if plan.enableDXVKPayload {
+                await publish("reinstalling DXVK payload")
                 do {
                     try Wine.enableDXVK(bottle: targetBottle)
                     repairNotes.append("reinstalled the DXVK DLL payload")
@@ -2097,6 +2137,7 @@ struct ConfigView: View {
             }
 
             if plan.enableDXMTPayload {
+                await publish("validating DXMT payload")
                 do {
                     try await Wine.enableDXMT(bottle: targetBottle)
                     repairNotes.append("validated the DXMT payload")
@@ -2106,6 +2147,7 @@ struct ConfigView: View {
             }
 
             if plan.enableDLSSRuntimeTranslation {
+                await publish("validating DLSS translation runtime")
                 do {
                     try await Wine.enableDLSSRuntimeTranslation(bottle: targetBottle)
                     await MainActor.run {
@@ -2124,6 +2166,7 @@ struct ConfigView: View {
             }
 
             if plan.enableMediaPlaybackCompatibility {
+                await publish("enabling media playback compatibility")
                 await MainActor.run {
                     targetBottle.settings.mediaPlaybackCompatibilityMode = true
                 }
@@ -2131,6 +2174,7 @@ struct ConfigView: View {
             }
 
             if plan.resetMinecraftAuthCaches {
+                await publish("resetting Microsoft sign-in caches")
                 let deletedCacheItems = await MainActor.run {
                     targetBottle.settings.steamResetHTMLCacheOnLaunch = true
                     let deletedItems = clearMinecraftDungeonsAuthWebCache()
@@ -2151,6 +2195,7 @@ struct ConfigView: View {
             }
 
             if plan.resetSteamWebHelperFallback {
+                await publish("applying Steam webhelper fallback")
                 let removedSteamCacheItems = await MainActor.run {
                     Self.clearSteamHTMLCacheDirectories(for: targetBottle)
                 }
@@ -2169,8 +2214,11 @@ struct ConfigView: View {
             }
 
             if plan.installEdgeWebView2Runtime {
+                await publish("preparing WebView2 runtime installer")
                 do {
-                    let result = try await WebView2RuntimeInstaller.installIfNeeded(for: targetBottle)
+                    let result = try await WebView2RuntimeInstaller.installIfNeeded(for: targetBottle) { phase in
+                        await publish(phase)
+                    }
                     repairNotes.append(result.note)
                 } catch {
                     repairNotes.append("WebView2 automatic install failed: \(error.localizedDescription)")
@@ -2178,6 +2226,7 @@ struct ConfigView: View {
             }
 
             if let winetricksCommand = plan.winetricksCommand {
+                await publish("running Winetricks: \(winetricksCommand)")
                 await Winetricks.runCommand(command: winetricksCommand, bottle: targetBottle)
                 repairNotes.append("started Winetricks repair: \(winetricksCommand)")
             }
@@ -2197,6 +2246,10 @@ struct ConfigView: View {
                 snapshotInFlight = false
                 if trackEnvironmentRepair {
                     environmentRepairInFlight = false
+                }
+                if let vectorDoctorFixID, vectorDoctorFixInFlight == vectorDoctorFixID {
+                    vectorDoctorFixInFlight = nil
+                    vectorDoctorStatusMessage = snapshotMessage
                 }
             }
         }

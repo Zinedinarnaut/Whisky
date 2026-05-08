@@ -80,47 +80,7 @@ struct CompatibilityDatabaseView: View {
 
     private var filteredGames: [CompatibilityGame] {
         games
-            .filter { game in
-                let matchesFilter: Bool
-                if let required = ratingFilter.rating {
-                    matchesFilter = game.rating == required
-                } else {
-                    matchesFilter = true
-                }
-
-                guard matchesFilter else {
-                    return false
-                }
-
-                if tagFilter != CompatibilityFilterPanel.allTagsValue,
-                   !game.searchableTags.contains(where: { $0.caseInsensitiveCompare(tagFilter) == .orderedSame }) {
-                    return false
-                }
-
-                let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmedQuery.isEmpty else {
-                    return true
-                }
-
-                let normalizedQuery = trimmedQuery.lowercased()
-                let haystack = [
-                    game.title.lowercased(),
-                    game.store.lowercased(),
-                    game.appID ?? "",
-                    game.recommendedPreset.lowercased(),
-                    game.recommendedArguments.lowercased(),
-                    game.notes.joined(separator: " ").lowercased(),
-                    game.searchableTags.joined(separator: " ").lowercased(),
-                    game.localProfileName?.lowercased() ?? "",
-                    game.remoteVecPatchRuleID?.lowercased() ?? "",
-                    game.dependencyRepairs.joined(separator: " ").lowercased(),
-                    game.trustClassification.rawValue.lowercased(),
-                    game.antiCheatProvider?.lowercased() ?? "",
-                    game.supportContactStatus.lowercased()
-                ].joined(separator: " ")
-
-                return haystack.contains(normalizedQuery)
-            }
+            .filter(matchesGame)
             .sorted { lhs, rhs in
                 if lhs.rating.sortIndex == rhs.rating.sortIndex {
                     return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
@@ -129,10 +89,55 @@ struct CompatibilityDatabaseView: View {
             }
     }
 
+    private func matchesGame(_ game: CompatibilityGame) -> Bool {
+        if let required = ratingFilter.rating, game.rating != required {
+            return false
+        }
+
+        if tagFilter != CompatibilityFilterPanel.allTagsValue,
+           !game.searchableTags.contains(where: { $0.caseInsensitiveCompare(tagFilter) == .orderedSame }) {
+            return false
+        }
+
+        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            return true
+        }
+
+        return searchHaystack(for: game).contains(trimmedQuery.lowercased())
+    }
+
+    private func searchHaystack(for game: CompatibilityGame) -> String {
+        let visibility = VectorCompatibilityDatabase.patchVisibility(for: game)
+        var parts: [String] = []
+        parts.reserveCapacity(21)
+        parts.append(game.title)
+        parts.append(game.store)
+        parts.append(game.appID ?? "")
+        parts.append(game.recommendedPreset)
+        parts.append(game.recommendedArguments)
+        parts.append(game.notes.joined(separator: " "))
+        parts.append(game.searchableTags.joined(separator: " "))
+        parts.append(game.localProfileName ?? "")
+        parts.append(game.remoteVecPatchRuleID ?? "")
+        parts.append(game.dependencyRepairs.joined(separator: " "))
+        parts.append(game.trustClassification.rawValue)
+        parts.append(game.antiCheatProvider ?? "")
+        parts.append(game.supportContactStatus)
+        parts.append(visibility.backend)
+        parts.append(visibility.fallbackBackend ?? "")
+        parts.append(visibility.executableMatch ?? "")
+        parts.append(visibility.patchVersion)
+        parts.append(visibility.patchState)
+        parts.append(visibility.riskLevel)
+        parts.append(visibility.recommendedAction ?? "")
+        parts.append(visibility.knownIssues.joined(separator: " "))
+        return parts.joined(separator: " ").lowercased()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             CompatibilityDatabaseHeader(totalCount: games.count, filteredCount: filteredGames.count)
-            CompatibilitySummaryStrip(games: games)
             CompatibilityCoverageStrip(games: games)
             CompatibilityFilterPanel(
                 searchQuery: $searchQuery,
@@ -236,13 +241,19 @@ private struct CompatibilitySummaryPill: View {
 private struct CompatibilityCoverageStrip: View {
     let games: [CompatibilityGame]
 
+    private var knownIssueCount: Int {
+        games.filter { game in
+            !VectorCompatibilityDatabase.patchVisibility(for: game).knownIssues.isEmpty
+        }.count
+    }
+
     private var coverageItems: [CompatibilityCoverageSummaryItem] {
         [
             CompatibilityCoverageSummaryItem(
-                title: "Local profiles",
-                count: games.filter { $0.hasLocalProfile }.count,
-                icon: "slider.horizontal.3",
-                color: .blue
+                title: "Playable",
+                count: games.filter { $0.rating == .playable }.count,
+                icon: "checkmark.seal",
+                color: .green
             ),
             CompatibilityCoverageSummaryItem(
                 title: "Remote rules",
@@ -257,7 +268,13 @@ private struct CompatibilityCoverageStrip: View {
                 color: .orange
             ),
             CompatibilityCoverageSummaryItem(
-                title: "Official support required",
+                title: "Known issues",
+                count: knownIssueCount,
+                icon: "exclamationmark.triangle",
+                color: .yellow
+            ),
+            CompatibilityCoverageSummaryItem(
+                title: "Protected",
                 count: games.filter { $0.officialSupportRequired }.count,
                 icon: "lock.shield",
                 color: .red
@@ -336,28 +353,33 @@ private struct CompatibilityFilterPanel: View {
 private struct CompatibilityGameCard: View {
     let game: CompatibilityGame
 
+    private var visibility: CompatibilityPatchVisibilityMetadata {
+        VectorCompatibilityDatabase.patchVisibility(for: game)
+    }
+
     private var appIDText: String {
         game.appID.map { "AppID \($0)" } ?? "No AppID"
     }
 
-    private var primaryRecommendation: String {
-        if !game.recommendedPreset.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return game.recommendedPreset
-        }
-        if !game.recommendedArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return game.recommendedArguments
-        }
-        return "Default bottle settings"
+    private var visibleTags: [String] {
+        Array(game.tags.prefix(3))
     }
 
-    private var repairSummary: String {
-        if game.dependencyRepairs.isEmpty {
-            return "No dedicated repair"
+    private var hiddenTagCount: Int {
+        max(0, game.tags.count - visibleTags.count)
+    }
+
+    private var patchCoverage: String {
+        if game.officialSupportRequired {
+            return "Official support required"
         }
-        if game.dependencyRepairs.count == 1 {
-            return game.dependencyRepairs[0]
+        if game.hasRemoteVecPatchRule {
+            return "Remote rule + local profile"
         }
-        return "\(game.dependencyRepairs.count) repair paths"
+        if game.hasLocalProfile {
+            return "Local profile"
+        }
+        return "Metadata only"
     }
 
     var body: some View {
@@ -371,10 +393,6 @@ private struct CompatibilityGameCard: View {
                         HStack(spacing: 8) {
                             CompatibilityMetadataPill(text: game.store, icon: "bag")
                             CompatibilityMetadataPill(text: appIDText, icon: "number")
-                            CompatibilityMetadataPill(
-                                text: "\(Int(game.confidence * 100))% confidence",
-                                icon: "gauge.with.dots.needle.bottom.50percent"
-                            )
                             CompatibilityMetadataPill(text: "Verified \(game.lastVerifiedOn)", icon: "calendar")
                         }
                     }
@@ -382,27 +400,9 @@ private struct CompatibilityGameCard: View {
                     CompatibilityRatingBadge(rating: game.rating)
                 }
 
-                HStack(spacing: 6) {
-                    CompatibilityCoveragePill(
-                        text: game.localProfileName ?? "No local profile",
-                        icon: game.hasLocalProfile ? "slider.horizontal.3" : "slash.circle",
-                        tint: game.hasLocalProfile ? .blue : .secondary
-                    )
-                    CompatibilityCoveragePill(
-                        text: game.hasRemoteVecPatchRule ? "Remote VecPatch rule" : "No remote rule",
-                        icon: game.hasRemoteVecPatchRule ? "antenna.radiowaves.left.and.right" : "wifi.slash",
-                        tint: game.hasRemoteVecPatchRule ? .mint : .secondary
-                    )
-                    CompatibilityCoveragePill(
-                        text: repairSummary,
-                        icon: game.hasDependencyRepairs ? "wrench.and.screwdriver" : "checkmark.seal",
-                        tint: game.hasDependencyRepairs ? .orange : .secondary
-                    )
-                }
-
-                if !game.tags.isEmpty {
+                if !visibleTags.isEmpty {
                     HStack(spacing: 6) {
-                        ForEach(game.tags.prefix(4), id: \.self) { tag in
+                        ForEach(visibleTags, id: \.self) { tag in
                             Text(tag)
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.62))
@@ -410,20 +410,19 @@ private struct CompatibilityGameCard: View {
                                 .padding(.vertical, 3)
                                 .background(Color.white.opacity(0.04), in: Capsule())
                         }
+                        if hiddenTagCount > 0 {
+                            Text("+\(hiddenTagCount)")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(VectorPanelTokens.subtleText)
+                        }
                     }
                 }
 
-                if !game.recommendedArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    CompatibilityRecommendationRow(
-                        title: "Recommended args",
-                        value: game.recommendedArguments,
-                        monospaced: true
-                    )
-                }
-                CompatibilityRecommendationRow(
-                    title: "Recommended preset",
-                    value: primaryRecommendation,
-                    monospaced: false
+                CompatibilityPatchVisibilityPanel(
+                    coverage: patchCoverage,
+                    confidence: game.confidence,
+                    metadata: visibility,
+                    repairs: game.dependencyRepairs
                 )
 
                 if let note = game.notes.first {
@@ -431,14 +430,6 @@ private struct CompatibilityGameCard: View {
                         .font(.system(size: 12))
                         .foregroundStyle(VectorPanelTokens.subtleText)
                         .lineLimit(2)
-                }
-
-                if !game.dependencyRepairs.isEmpty {
-                    Text("Repairs: \(game.dependencyRepairs.joined(separator: ", "))")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .lineLimit(1)
-                        .help(game.dependencyRepairs.joined(separator: "\n"))
                 }
 
                 if game.trustClassification == .blockedAntiCheat || game.trustClassification == .protectedMultiplayer {
@@ -458,6 +449,107 @@ private struct CompatibilityGameCard: View {
                 }
             }
         }
+    }
+}
+
+private struct CompatibilityPatchVisibilityPanel: View {
+    let coverage: String
+    let confidence: Double
+    let metadata: CompatibilityPatchVisibilityMetadata
+    let repairs: [String]
+
+    private var fixSummary: String {
+        if !repairs.isEmpty {
+            return repairs.prefix(2).joined(separator: ", ")
+        }
+        return metadata.recommendedAction ?? "No dedicated fix path"
+    }
+
+    private var issueSummary: String {
+        metadata.knownIssues.first ?? "No known issue flagged"
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                CompatibilityVisibilityItem(
+                    title: "Backend",
+                    value: metadata.backendDisplay,
+                    icon: "display.2",
+                    tint: .teal,
+                    monospaced: true
+                )
+                CompatibilityVisibilityItem(
+                    title: "Patch",
+                    value: "\(metadata.patchState) · \(metadata.patchVersion)",
+                    icon: "shippingbox.circle",
+                    tint: metadata.patchState == "blocked" ? .red : .mint,
+                    monospaced: true
+                )
+                CompatibilityVisibilityItem(
+                    title: "Coverage",
+                    value: coverage,
+                    icon: "target",
+                    tint: .blue
+                )
+                CompatibilityVisibilityItem(
+                    title: "Confidence",
+                    value: "\(Int(confidence * 100))%",
+                    icon: "gauge.with.dots.needle.bottom.50percent",
+                    tint: .green,
+                    monospaced: true
+                )
+            }
+            HStack(spacing: 8) {
+                CompatibilityVisibilityItem(
+                    title: "Fix metadata",
+                    value: fixSummary,
+                    icon: "wrench.and.screwdriver",
+                    tint: repairs.isEmpty ? .secondary : .orange
+                )
+                CompatibilityVisibilityItem(
+                    title: "Known issue",
+                    value: issueSummary,
+                    icon: "exclamationmark.triangle",
+                    tint: metadata.knownIssues.isEmpty ? .secondary : .yellow
+                )
+            }
+        }
+    }
+}
+
+private struct CompatibilityVisibilityItem: View {
+    let title: String
+    let value: String
+    let icon: String
+    let tint: Color
+    var monospaced: Bool = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint.opacity(0.9))
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title.uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(VectorPanelTokens.subtleText)
+                Text(value)
+                    .font(.system(size: 11, weight: .medium, design: monospaced ? .monospaced : .default))
+                    .foregroundStyle(.white.opacity(0.76))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(value)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
     }
 }
 

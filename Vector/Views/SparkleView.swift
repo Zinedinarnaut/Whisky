@@ -184,6 +184,96 @@ private struct PatchStatePill: View {
     }
 }
 
+private struct PatchVisibilityCard: View {
+    let title: String
+    let value: String
+    let detail: String
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(tint.opacity(0.9))
+                Text(title.uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(VectorPanelTokens.subtleText)
+            }
+            Text(value)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.86))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(value)
+            Text(detail)
+                .font(.system(size: 10))
+                .foregroundStyle(VectorPanelTokens.subtleText)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(9)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+private struct DispatchDoctorSignalRow: View {
+    let signal: DispatchDoctorSignal
+
+    private var fixSummary: String {
+        signal.fixIDs.isEmpty ? "No fix IDs declared" : signal.fixIDs.joined(separator: ", ")
+    }
+
+    private var updatedSummary: String {
+        signal.updatedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "no timestamp"
+            : signal.updatedAt
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: signal.riskLevel == .blocked ? "lock.shield" : "wrench.and.screwdriver")
+                .foregroundStyle(signal.riskLevel == .blocked ? .red.opacity(0.8) : .orange.opacity(0.85))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Text(signal.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.86))
+                    Text(signal.trustClass.rawValue)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(VectorPanelTokens.subtleText)
+                    Text(signal.riskLevel.rawValue)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(signal.riskLevel == .blocked ? .red.opacity(0.82) : .orange.opacity(0.82))
+                }
+                if !signal.summary.isEmpty {
+                    Text(signal.summary)
+                        .font(.system(size: 11))
+                        .foregroundStyle(VectorPanelTokens.subtleText)
+                        .lineLimit(2)
+                }
+                Text("Fix IDs: \(fixSummary) · Updated: \(updatedSummary)")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(fixSummary)
+            }
+        }
+        .padding(9)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
 struct PatchCenterView: View {
     let bottles: [Bottle]
     @Binding var selectedBottleURL: URL?
@@ -193,6 +283,8 @@ struct PatchCenterView: View {
     @State private var syncing: Bool = false
     @State private var progress: Double = 0
     @State private var statusMessage: String = ""
+    @State private var doctorSignals: [DispatchDoctorSignal] = []
+    @State private var doctorSignalsLoading: Bool = false
     @State private var localOverridesDraft: String = ""
     @State private var localOverrideStatus: String = ""
     @State private var localOverrideLoading: Bool = false
@@ -323,6 +415,54 @@ struct PatchCenterView: View {
         return ""
     }
 
+    private var patchBackendSummary: String {
+        guard let dispatchStatus else {
+            return "Unknown"
+        }
+        if dispatchStatus.recommendedBackend == nil, dispatchStatus.fallbackBackend == nil {
+            return "Auto"
+        }
+        if dispatchStatus.fallbackBackend == nil || recommendedBackendLabel == fallbackBackendLabel {
+            return recommendedBackendLabel
+        }
+        return "\(recommendedBackendLabel) / \(fallbackBackendLabel)"
+    }
+
+    private var patchFixSummary: String {
+        guard !doctorSignals.isEmpty else {
+            return doctorSignalsLoading ? "Loading signals..." : "No active fix signal"
+        }
+        let fixIDs = doctorSignals.flatMap(\.fixIDs)
+        if !fixIDs.isEmpty {
+            return Array(fixIDs.prefix(3)).joined(separator: ", ")
+        }
+        return doctorSignals[0].title
+    }
+
+    private var patchKnownIssueSummary: String {
+        guard let signal = doctorSignals.first else {
+            let changelog = dispatchStatus?.remoteChangelog.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return changelog.isEmpty ? "No known issue" : changelog
+        }
+        return signal.summary.isEmpty ? signal.title : signal.summary
+    }
+
+    private var patchReceiptSummary: String {
+        guard let dispatchStatus else {
+            return "No receipt"
+        }
+        if dispatchStatus.alreadyApplied {
+            return "Digest matches applied receipt"
+        }
+        if dispatchStatus.updateAvailable {
+            return "New effective digest available"
+        }
+        if dispatchStatus.effectiveRuleCount == 0 {
+            return "No matching rules"
+        }
+        return "Metadata current"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -348,28 +488,41 @@ struct PatchCenterView: View {
                         Text(patchStateDetail)
                             .font(.system(size: 12))
                             .foregroundStyle(VectorPanelTokens.subtleText)
-                        if let dispatchStatus, dispatchStatus.recommendedBackend != nil {
+                        if let dispatchStatus {
                             HStack(spacing: 8) {
-                                Text("Effective backend:")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.82))
-                                Text(recommendedBackendLabel)
-                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.9))
-                                if dispatchStatus.fallbackBackend != nil {
-                                    Text("Fallback: \(fallbackBackendLabel)")
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(VectorPanelTokens.subtleText)
-                                }
+                                PatchVisibilityCard(
+                                    title: "Backend",
+                                    value: patchBackendSummary,
+                                    detail: "effective render path",
+                                    icon: "display.2",
+                                    tint: .teal
+                                )
+                                PatchVisibilityCard(
+                                    title: "Fix metadata",
+                                    value: patchFixSummary,
+                                    detail: "\(doctorSignals.count) doctor signal(s)",
+                                    icon: "wrench.and.screwdriver",
+                                    tint: doctorSignals.isEmpty ? .secondary : .orange
+                                )
+                                PatchVisibilityCard(
+                                    title: "Known issue",
+                                    value: patchKnownIssueSummary,
+                                    detail: patchReceiptSummary,
+                                    icon: "exclamationmark.triangle",
+                                    tint: doctorSignals.isEmpty ? .secondary : .yellow
+                                )
+                                PatchVisibilityCard(
+                                    title: "Effective",
+                                    value: "\(dispatchStatus.effectiveRuleCount) rule(s)",
+                                    detail: "remote \(dispatchStatus.remoteRuleCount)"
+                                        + " · v\(dispatchStatus.remoteRuleVersion)",
+                                    icon: "shippingbox.circle",
+                                    tint: dispatchStatus.effectiveRuleCount > 0 ? .mint : .secondary
+                                )
                             }
                         }
                         if let dispatchStatus {
                             HStack(spacing: 8) {
-                                PatchStatePill(
-                                    title: "Effective",
-                                    value: "\(dispatchStatus.effectiveRuleCount) rule(s)",
-                                    tint: dispatchStatus.effectiveRuleCount > 0 ? .mint : .secondary
-                                )
                                 PatchStatePill(
                                     title: "Last applied",
                                     value: formattedDate(dispatchStatus.lastAppliedAt),
@@ -380,6 +533,13 @@ struct PatchCenterView: View {
                                     value: formattedDate(dispatchStatus.lastFetchedAt),
                                     tint: dispatchStatus.lastFetchedAt == nil ? .secondary : .blue
                                 )
+                            }
+                        }
+                        if !doctorSignals.isEmpty {
+                            VStack(spacing: 8) {
+                                ForEach(Array(doctorSignals.prefix(3)), id: \.id) { signal in
+                                    DispatchDoctorSignalRow(signal: signal)
+                                }
                             }
                         }
                         if loading || syncing {
@@ -542,8 +702,10 @@ struct PatchCenterView: View {
         }
         .onChange(of: selectedBottleURL) {
             dispatchStatus = nil
+            doctorSignals = []
             loading = false
             syncing = false
+            doctorSignalsLoading = false
             progress = 0
             statusMessage = ""
             refreshStatus(checkRemote: true)
@@ -592,6 +754,8 @@ struct PatchCenterView: View {
     private func refreshStatus(checkRemote: Bool) {
         guard let targetBottle = selectedBottle else {
             dispatchStatus = nil
+            doctorSignals = []
+            doctorSignalsLoading = false
             statusMessage = "Select a bottle to view patch status."
             return
         }
@@ -601,17 +765,23 @@ struct PatchCenterView: View {
                 channel: targetBottle.settings.patchDispatchChannel,
                 dispatchEnabled: false
             )
+            doctorSignals = []
+            doctorSignalsLoading = false
             statusMessage = "Patch dispatch is disabled for this bottle."
             return
         }
 
         loading = true
+        doctorSignalsLoading = true
         progress = 0.2
         statusMessage = "Checking dispatch metadata..."
         Task(priority: .userInitiated) {
             let status = await DispatchPatchService.shared.status(for: targetBottle, checkRemote: checkRemote)
+            let signals = await DispatchPatchService.shared.doctorSignals(for: targetBottle)
             await MainActor.run {
                 dispatchStatus = status
+                doctorSignals = signals
+                doctorSignalsLoading = false
                 loading = false
                 progress = 0
                 if status.updateAvailable {
@@ -636,21 +806,27 @@ struct PatchCenterView: View {
         }
 
         syncing = true
+        doctorSignalsLoading = true
         progress = 0.05
         statusMessage = "Fetching latest patch manifest..."
         Task(priority: .userInitiated) {
             let latestStatus = await DispatchPatchService.shared.status(for: targetBottle, checkRemote: true)
+            let latestSignals = await DispatchPatchService.shared.doctorSignals(for: targetBottle)
             await MainActor.run {
                 dispatchStatus = latestStatus
+                doctorSignals = latestSignals
                 progress = 0.45
                 statusMessage = "Applying patches to this bottle..."
             }
 
             await BottleGamingModeManager.syncDispatchProfiles(for: targetBottle, forceRefresh: true)
             let appliedStatus = await DispatchPatchService.shared.status(for: targetBottle, checkRemote: false)
+            let appliedSignals = await DispatchPatchService.shared.doctorSignals(for: targetBottle)
 
             await MainActor.run {
                 dispatchStatus = appliedStatus
+                doctorSignals = appliedSignals
+                doctorSignalsLoading = false
                 progress = 1
                 syncing = false
                 statusMessage = appliedStatus.alreadyApplied

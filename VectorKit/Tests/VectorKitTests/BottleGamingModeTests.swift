@@ -19,6 +19,8 @@
 import XCTest
 @testable import VectorKit
 
+// The patch/profile matrix is intentionally broad because it guards idempotence across many games.
+// swiftlint:disable:next type_body_length
 final class BottleGamingModeTests: XCTestCase {
     private struct ExpectedProfile {
         let name: String
@@ -140,6 +142,195 @@ final class BottleGamingModeTests: XCTestCase {
         BottleGamingModeManager.ensureKnownGameProfiles(in: bottle)
 
         XCTAssertTrue(bottle.settings.gameProfiles.isEmpty)
+    }
+
+    func testKnownGameProfilesDoNotOverwriteUserProfilesAndCollapseManagedDuplicates() throws {
+        let bottle = try makeBottle()
+        let userProfile = BottleGameProfile(
+            name: "My Minecraft Dungeons",
+            executableMatch: "dungeons-win64-shipping.exe",
+            steamAppID: "1672970",
+            arguments: "-user-choice",
+            environment: ["USER_PROFILE": "1"]
+        )
+        let staleManagedProfile = BottleGameProfile(
+            name: "Auto: Minecraft Dungeons",
+            executableMatch: "dungeons-win64-shipping.exe",
+            steamAppID: "1672970",
+            arguments: "-old",
+            environment: ["OLD_PROFILE": "1"]
+        )
+        let duplicateManagedProfile = BottleGameProfile(
+            name: "Auto: Minecraft Dungeons",
+            executableMatch: "dungeons-win64-shipping.exe",
+            steamAppID: "1672970",
+            arguments: "-older",
+            environment: ["OLDER_PROFILE": "1"]
+        )
+        bottle.settings.gameProfiles = [userProfile, staleManagedProfile, duplicateManagedProfile]
+
+        BottleGamingModeManager.ensureKnownGameProfiles(in: bottle)
+
+        let userProfiles = bottle.settings.gameProfiles.filter { $0.name == userProfile.name }
+        XCTAssertEqual(userProfiles.count, 1)
+        XCTAssertEqual(userProfiles.first?.id, userProfile.id)
+        XCTAssertEqual(userProfiles.first?.arguments, "-user-choice")
+        XCTAssertEqual(userProfiles.first?.environment["USER_PROFILE"], "1")
+
+        let managedProfiles = bottle.settings.gameProfiles.filter { $0.name == "Auto: Minecraft Dungeons" }
+        XCTAssertEqual(managedProfiles.count, 1)
+        XCTAssertEqual(managedProfiles.first?.id, staleManagedProfile.id)
+        XCTAssertEqual(managedProfiles.first?.environment["DXVK_ENABLE_NVAPI"], "0")
+        XCTAssertNil(managedProfiles.first?.environment["OLD_PROFILE"])
+        XCTAssertNil(managedProfiles.first?.environment["OLDER_PROFILE"])
+    }
+
+    func testDispatchRulesDoNotReapplyWhenDigestIsAlreadyApplied() {
+        let rule = DispatchPatchRule(
+            name: "Dispatch Rule",
+            executableMatch: "game.exe",
+            arguments: "-safe"
+        )
+
+        XCTAssertFalse(BottleGamingModeManager.shouldApplyDispatchRules(
+            [rule],
+            currentDispatchProfileCount: 1,
+            effectiveRulesDigest: " abc123 \n",
+            appliedRulesDigest: "abc123"
+        ))
+        XCTAssertTrue(BottleGamingModeManager.shouldApplyDispatchRules(
+            [rule],
+            currentDispatchProfileCount: 1,
+            effectiveRulesDigest: "def456",
+            appliedRulesDigest: "abc123"
+        ))
+        XCTAssertTrue(BottleGamingModeManager.shouldApplyDispatchRules(
+            [],
+            currentDispatchProfileCount: 1,
+            effectiveRulesDigest: "",
+            appliedRulesDigest: "abc123"
+        ))
+    }
+
+    func testDispatchMergeIsIdempotentByRuleIDAndRespectsExplicitBackend() throws {
+        let bottle = try makeBottle()
+        bottle.settings.graphicsBackendMode = .wined3d
+        let oldDispatchProfile = BottleGameProfile(
+            name: "Dispatch: Old Rule Name",
+            executableMatch: "game.exe",
+            steamAppID: "42",
+            arguments: "-old",
+            environment: [:],
+            graphicsBackendOverride: .dxvk,
+            fallbackGraphicsBackend: .wined3d,
+            dispatchRuleID: "rule-1"
+        )
+        bottle.settings.gameProfiles = [oldDispatchProfile]
+
+        let rules = [
+            DispatchPatchRule(
+                id: "rule-1",
+                name: "New Rule Name",
+                executableMatch: "game.exe",
+                steamAppID: "42",
+                arguments: "-new",
+                environment: ["PATCHED": "1"],
+                priority: 10,
+                graphicsBackend: .dxvk,
+                fallbackGraphicsBackend: .wined3d
+            ),
+            DispatchPatchRule(
+                id: "rule-1",
+                name: "Duplicate Rule Name",
+                executableMatch: "duplicate.exe",
+                steamAppID: "43",
+                arguments: "-duplicate",
+                priority: 20,
+                graphicsBackend: .d3dMetal,
+                fallbackGraphicsBackend: .dxvk
+            )
+        ]
+
+        BottleGamingModeManager.mergeDispatchRules(rules, into: bottle)
+        BottleGamingModeManager.mergeDispatchRules(rules, into: bottle)
+
+        let dispatchProfiles = bottle.settings.gameProfiles.filter {
+            $0.name.hasPrefix(BottleGamingModeManager.dispatchProfileNamePrefix)
+        }
+        XCTAssertEqual(dispatchProfiles.count, 1)
+
+        let profile = try XCTUnwrap(dispatchProfiles.first)
+        XCTAssertEqual(profile.id, oldDispatchProfile.id)
+        XCTAssertEqual(profile.name, "Dispatch: New Rule Name")
+        XCTAssertEqual(profile.arguments, "-new")
+        XCTAssertEqual(profile.environment["PATCHED"], "1")
+        XCTAssertNil(profile.graphicsBackendOverride)
+        XCTAssertNil(profile.fallbackGraphicsBackend)
+        XCTAssertEqual(bottle.settings.graphicsBackendMode, .wined3d)
+    }
+
+    func testExplicitGraphicsBackendOverridesProfileEnvironmentAndExposesReason() throws {
+        let bottle = try makeBottle()
+        bottle.settings.graphicsBackendMode = .wined3d
+        let program = Program(
+            url: bottle.url
+                .appending(path: "drive_c")
+                .appending(path: "Games")
+                .appending(path: "Game")
+                .appending(path: "game.exe"),
+            bottle: bottle
+        )
+        var environment = [
+            "VECTOR_EFFECTIVE_GRAPHICS_BACKEND": "d3dMetal",
+            "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK": "dxvk",
+            "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_REASON": "Profile requested D3DMetal.",
+            "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK_REASON": "Profile fallback."
+        ]
+
+        program.applySmartGraphicsBackendSelection(to: &environment)
+
+        XCTAssertEqual(environment["VECTOR_EFFECTIVE_GRAPHICS_BACKEND"], "wined3d")
+        XCTAssertEqual(
+            environment["VECTOR_EFFECTIVE_GRAPHICS_BACKEND_REASON"],
+            "Explicit bottle graphics backend selection."
+        )
+        XCTAssertNil(environment["VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK"])
+        XCTAssertNil(environment["VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK_REASON"])
+        XCTAssertEqual(environment["VECTOR_FORCE_DISABLE_DXVK"], "1")
+        XCTAssertEqual(environment["WINEDLLOVERRIDES"], "dxgi,d3d9,d3d10core,d3d11=b")
+    }
+
+    func testAutomaticBackendSelectionPreservesD3DMetalHintAndFallbackReason() throws {
+        let bottle = try makeBottle()
+        bottle.settings.graphicsBackendMode = .auto
+        let program = Program(
+            url: bottle.url
+                .appending(path: "drive_c")
+                .appending(path: "Games")
+                .appending(path: "Game")
+                .appending(path: "game.exe"),
+            bottle: bottle
+        )
+        var environment = [
+            "VECTOR_EFFECTIVE_GRAPHICS_BACKEND": "d3dMetal",
+            "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK": "dxvk",
+            "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_REASON": "Profile requested D3DMetal.",
+            "VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK_REASON": "Profile fallback."
+        ]
+
+        program.applySmartGraphicsBackendSelection(to: &environment)
+
+        XCTAssertEqual(environment["VECTOR_EFFECTIVE_GRAPHICS_BACKEND"], "d3dMetal")
+        XCTAssertEqual(environment["VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK"], "dxvk")
+        XCTAssertEqual(
+            environment["VECTOR_EFFECTIVE_GRAPHICS_BACKEND_REASON"],
+            "Profile requested D3DMetal."
+        )
+        XCTAssertEqual(
+            environment["VECTOR_EFFECTIVE_GRAPHICS_BACKEND_FALLBACK_REASON"],
+            "Profile fallback."
+        )
+        XCTAssertEqual(environment["VECTOR_FORCE_DISABLE_DXVK"], "1")
     }
 
     private func makeBottle() throws -> Bottle {
