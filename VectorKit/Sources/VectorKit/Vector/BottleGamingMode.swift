@@ -989,6 +989,13 @@ public enum BottleGamingModeManager {
     }
 
     public static func ensureKnownGameProfiles(in bottle: Bottle) {
+        if VectorProtectedTitlePolicyEngine.scannedProtectedAssessment(for: bottle)?.shouldBlockLocalLaunch == true {
+            Logger.wineKit.info(
+                "Skipping managed game profile injection for protected bottle \(bottle.settings.name, privacy: .public)"
+            )
+            return
+        }
+
         var profiles = bottle.settings.gameProfiles
 
         let knownProfiles: [BottleGameProfile] = [
@@ -1004,7 +1011,9 @@ public enum BottleGamingModeManager {
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Parcel Simulator",
@@ -1017,7 +1026,9 @@ public enum BottleGamingModeManager {
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Minecraft Dungeons",
@@ -1036,7 +1047,9 @@ public enum BottleGamingModeManager {
                     "VECTOR_PROTON_STYLE_COMPAT": "1",
                     "VECTOR_PROTON_MEDIA_SHIMS": "1",
                     "VECTOR_MEDIA_FOUNDATION_MODE": "proton-style"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Minecraft Dungeons Launcher",
@@ -1055,7 +1068,9 @@ public enum BottleGamingModeManager {
                     "VECTOR_PROTON_STYLE_COMPAT": "1",
                     "VECTOR_PROTON_MEDIA_SHIMS": "1",
                     "VECTOR_MEDIA_FOUNDATION_MODE": "proton-style"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Content Warning",
@@ -1068,33 +1083,39 @@ public enum BottleGamingModeManager {
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Lethal Company",
                 executableMatch: "lethal company.exe",
                 steamAppID: "1966720",
-                arguments: "",
+                arguments: "-force-d3d11",
                 environment: [
-                    "WINEDLLOVERRIDES": "nvapi,nvapi64=d",
+                    "WINEDLLOVERRIDES": "dxgi,d3d11,d3d10core,d3d9=n,b;nvapi,nvapi64=d",
                     "SteamNoOverlayUIDrawing": "1",
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Hydroneer",
                 executableMatch: "hydroneer-win64-shipping.exe",
                 steamAppID: "1106840",
-                arguments: "",
+                arguments: "-force-d3d11 -dx11 -d3d11",
                 environment: [
-                    "WINEDLLOVERRIDES": "nvapi,nvapi64=d",
+                    "WINEDLLOVERRIDES": "dxgi,d3d11,d3d10core,d3d9=n,b;nvapi,nvapi64=d",
                     "SteamNoOverlayUIDrawing": "1",
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Satisfactory",
@@ -1102,12 +1123,14 @@ public enum BottleGamingModeManager {
                 steamAppID: "526870",
                 arguments: "-dx11",
                 environment: [
-                    "WINEDLLOVERRIDES": "dxgi,d3d11,d3d10core=n,b;nvapi,nvapi64=d",
+                    "WINEDLLOVERRIDES": "dxgi,d3d11,d3d10core,d3d9=n,b;nvapi,nvapi64=d",
                     "SteamNoOverlayUIDrawing": "1",
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Escape the Backrooms",
@@ -1115,12 +1138,14 @@ public enum BottleGamingModeManager {
                 steamAppID: "1943950",
                 arguments: "-dx11 -d3d11",
                 environment: [
-                    "WINEDLLOVERRIDES": "dxgi,d3d11,d3d10core=n,b;nvapi,nvapi64=d",
+                    "WINEDLLOVERRIDES": "dxgi,d3d11,d3d10core,d3d9=n,b;nvapi,nvapi64=d",
                     "SteamNoOverlayUIDrawing": "1",
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Titanfall 2",
@@ -1133,7 +1158,9 @@ public enum BottleGamingModeManager {
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Origin",
@@ -1145,7 +1172,9 @@ public enum BottleGamingModeManager {
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: EA App",
@@ -1157,7 +1186,9 @@ public enum BottleGamingModeManager {
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Silent Hill f",
@@ -1170,7 +1201,9 @@ public enum BottleGamingModeManager {
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
-                ]
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             ),
             BottleGameProfile(
                 name: "Auto: Forza Horizon 6",

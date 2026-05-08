@@ -39,6 +39,8 @@ extension VectorDoctor {
             dispatchCheck(context.dispatch),
             mediaCheck(bottle: context.bottle, repairSignals: context.repairSignals),
             launcherDependenciesCheck(context.repairSignals),
+            graphicsPayloadCheck(context.repairSignals),
+            steamWebHelperCheck(context.repairSignals),
             protectedCheck(context.protectedAssessment)
         ]
     }
@@ -184,7 +186,7 @@ private extension VectorDoctor {
     }
 
     static func launcherDependenciesCheck(_ repairSignals: RepairSignals) -> VectorDoctorCheck {
-        if repairSignals.needsLauncherDependencyRepair {
+        if repairSignals.needsLauncherDependencyRepair || repairSignals.needsXboxManualFallback {
             return check(
                 id: "launcher_dependencies",
                 title: "Launcher dependencies",
@@ -197,7 +199,43 @@ private extension VectorDoctor {
             id: "launcher_dependencies",
             title: "Launcher dependencies",
             status: .pass,
-            detail: "No .NET, Visual C++, or WebView auth dependency faults detected in recent logs."
+            detail: "No .NET, Visual C++, WebView2, or Microsoft auth dependency faults detected."
+        )
+    }
+
+    static func graphicsPayloadCheck(_ repairSignals: RepairSignals) -> VectorDoctorCheck {
+        if repairSignals.needsGraphicsPayloadRepair {
+            return check(
+                id: "graphics_payloads",
+                title: "Graphics payloads",
+                status: .warning,
+                detail: repairSignals.graphicsDetails
+            )
+        }
+
+        return check(
+            id: "graphics_payloads",
+            title: "Graphics payloads",
+            status: .pass,
+            detail: repairSignals.graphicsDetails
+        )
+    }
+
+    static func steamWebHelperCheck(_ repairSignals: RepairSignals) -> VectorDoctorCheck {
+        if repairSignals.needsSteamWebHelperFallback {
+            return check(
+                id: "steam_webhelper",
+                title: "Steam webhelper/CEF",
+                status: .warning,
+                detail: repairSignals.steamDetails
+            )
+        }
+
+        return check(
+            id: "steam_webhelper",
+            title: "Steam webhelper/CEF",
+            status: .pass,
+            detail: repairSignals.steamDetails
         )
     }
 

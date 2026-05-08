@@ -4,6 +4,7 @@ const GITHUB_REPO_URL = "https://github.com/Zinedinarnaut/Whisky";
 
 export type PatchRiskLevel = "low" | "medium" | "high" | "blocked" | string;
 export type GameTrustClass = "singlePlayer" | "moddingAllowed" | "protectedMultiplayer" | "blockedAntiCheat" | string;
+export type PatchCoverageState = "blocked" | "remote-rule" | "local-profile" | "metadata-only" | "unknown" | string;
 
 export type VecPatchRule = {
   id: string;
@@ -24,6 +25,11 @@ export type VecPatchRule = {
   risk_level?: PatchRiskLevel;
   official_support_required?: boolean;
   studio_approved?: boolean;
+  local_profile?: string;
+  dependency_repairs?: string[];
+  tags?: string[];
+  patch_state?: PatchCoverageState;
+  support_policy?: string;
   updated_at?: string;
 };
 
@@ -110,6 +116,16 @@ export type CompatibilityEntry = {
   note: string;
   recommendedAction?: string;
   knownIssues?: string[];
+  hasLocalProfile: boolean;
+  localProfile?: string;
+  hasRemoteVecPatchRule: boolean;
+  remoteRuleId?: string;
+  hasDependencyRepairs: boolean;
+  dependencyRepairs: string[];
+  officialSupportRequired?: boolean;
+  supportPolicy?: string;
+  tags: string[];
+  patchState: PatchCoverageState;
   source?: string;
   updatedAt?: string;
 };
@@ -154,6 +170,10 @@ const fallbackManifest: VecPatchManifest = {
       fallback_graphics_backend: "dxvk",
       trust_class: "singlePlayer",
       risk_level: "low",
+      local_profile: "Auto: Minecraft Dungeons",
+      dependency_repairs: ["WebView2 auth repair", "media playback compatibility", "Proton-style media/auth markers"],
+      tags: ["D3D11", "Microsoft Auth", "Media", "local-profile", "remote-rule"],
+      patch_state: "remote-rule",
       changelog: "Steam build launches with a D3D12/D3DMetal profile; Microsoft auth remains the known fragile area.",
     },
     {
@@ -168,6 +188,10 @@ const fallbackManifest: VecPatchManifest = {
       fallback_graphics_backend: "d3dMetal",
       trust_class: "singlePlayer",
       risk_level: "low",
+      local_profile: "Auto: Content Warning",
+      dependency_repairs: ["DXVK payload repair", "runtime DLL mirror validation"],
+      tags: ["D3D11", "DXVK", "Steam", "local-profile", "remote-rule"],
+      patch_state: "remote-rule",
       changelog: "DXVK-first D3D11 startup profile.",
     },
     {
@@ -182,6 +206,10 @@ const fallbackManifest: VecPatchManifest = {
       fallback_graphics_backend: "d3dMetal",
       trust_class: "singlePlayer",
       risk_level: "low",
+      local_profile: "Auto: Parcel Simulator",
+      dependency_repairs: ["DXVK payload repair", "runtime DLL mirror validation"],
+      tags: ["D3D11", "DXVK", "Steam", "local-profile", "remote-rule"],
+      patch_state: "remote-rule",
       changelog: "UE profile with launcher-safe overrides.",
     },
     {
@@ -197,53 +225,244 @@ const fallbackManifest: VecPatchManifest = {
       risk_level: "blocked",
       official_support_required: true,
       studio_approved: true,
+      tags: ["EAC", "Protected", "Blocked", "official-support-required", "remote-rule"],
+      patch_state: "blocked",
+      support_policy: "Blocked locally. Official anti-cheat support required.",
       changelog: "Blocked locally until official Embark/EAC support exists.",
     },
   ],
 };
 
-const compatibilityNotes: Record<string, Partial<CompatibilityEntry>> = {
-  "ARC Raiders": {
+type KnownCompatibilityMetadata = {
+  game: string;
+  status: CompatibilityEntry["status"];
+  level: CompatibilityEntry["level"];
+  note: string;
+  backend: string;
+  fallbackBackend?: string;
+  steamAppId?: string;
+  executableMatch?: string;
+  trustClass?: GameTrustClass;
+  riskLevel?: PatchRiskLevel;
+  localProfile?: string;
+  remoteRuleId?: string;
+  dependencyRepairs?: string[];
+  tags: string[];
+  recommendedAction?: string;
+  knownIssues?: string[];
+  officialSupportRequired?: boolean;
+  supportPolicy?: string;
+};
+
+const knownCompatibilityMatrix: KnownCompatibilityMetadata[] = [
+  {
+    game: "High On Life 2",
+    status: "Needs Fix",
+    level: "Silver",
+    backend: "d3dMetal",
+    fallbackBackend: "dxvk",
+    steamAppId: "2069250",
+    executableMatch: "highonlife2-win64-shipping.exe",
+    localProfile: "Auto: High On Life 2",
+    dependencyRepairs: ["FSR/NGX shim validation", "app-scoped D3D override repair"],
+    tags: ["UE5", "D3D12", "FSR", "NGX", "local-profile"],
+    note: "Local profile exists for the D3D12/D3DMetal path; compatibility remains marked needs-fix until more launch evidence is available.",
+    recommendedAction: "Use the local profile and verify the FSR/NGX shim path before treating this as playable.",
+  },
+  {
+    game: "Parcel Simulator",
+    status: "Working",
+    level: "Platinum",
+    backend: "dxvk",
+    fallbackBackend: "d3dMetal",
+    steamAppId: "2424010",
+    executableMatch: "parcel-win64-shipping.exe",
+    localProfile: "Auto: Parcel Simulator",
+    remoteRuleId: "fallback-parcel-simulator",
+    dependencyRepairs: ["DXVK payload repair", "runtime DLL mirror validation"],
+    tags: ["D3D11", "DXVK", "Steam", "local-profile", "remote-rule"],
+    note: "Known working with the stable D3D11 profile and launcher-safe overrides.",
+    recommendedAction: "Apply the local or VecPatch D3D11 profile.",
+  },
+  {
+    game: "Minecraft Dungeons",
+    status: "Playable",
+    level: "Gold",
+    backend: "dxvk",
+    fallbackBackend: "wined3d",
+    steamAppId: "1672970",
+    executableMatch: "dungeons-win64-shipping.exe",
+    localProfile: "Auto: Minecraft Dungeons",
+    remoteRuleId: "proton-style-minecraft-dungeons-media-auth-v1",
+    dependencyRepairs: ["WebView2 auth repair", "media playback compatibility", "Proton-style media/auth markers"],
+    tags: ["D3D11", "Microsoft Auth", "Media", "auth-repair", "local-profile", "remote-rule"],
+    note: "Steam build launches; Microsoft/Xbox auth and WebView plumbing remain the fragile areas.",
+    recommendedAction: "Apply the profile and run the sign-in/media repair path if auth or intro video fails.",
+    knownIssues: ["Microsoft sign-in path can require WebView2/auth cache repair"],
+  },
+  {
+    game: "Content Warning",
+    status: "Playable",
+    level: "Gold",
+    backend: "dxvk",
+    fallbackBackend: "d3dMetal",
+    steamAppId: "2881650",
+    executableMatch: "content warning.exe",
+    localProfile: "Auto: Content Warning",
+    remoteRuleId: "fallback-content-warning",
+    dependencyRepairs: ["DXVK payload repair", "runtime DLL mirror validation"],
+    tags: ["D3D11", "DXVK", "Steam", "local-profile", "remote-rule"],
+    note: "Uses a DXVK-first D3D11 profile with dependency checks for startup stability.",
+    recommendedAction: "Apply the local or VecPatch D3D11 profile.",
+  },
+  {
+    game: "Silent Hill f",
+    status: "Needs Fix",
+    level: "Silver",
+    backend: "dxvk",
+    steamAppId: "2947440",
+    executableMatch: "silenthillf-win64-shipping.exe",
+    localProfile: "Auto: Silent Hill f",
+    dependencyRepairs: ["DXVK payload repair"],
+    tags: ["D3D11", "DXVK", "Steam", "boots", "local-profile"],
+    note: "Known to boot on the forced DX11 path; DX12 is unstable and this is not advertised as fully playable.",
+    recommendedAction: "Use the local DX11 profile and keep expectations at boots/needs-fix until verified.",
+    knownIssues: ["DX12 path is unstable on Apple Silicon"],
+  },
+  {
+    game: "WeMod (Wand Runtime)",
+    status: "Needs Fix",
+    level: "Silver",
+    backend: "wined3d",
+    executableMatch: "wemod.exe",
+    localProfile: "Auto: WeMod / Wand",
+    dependencyRepairs: ["compatibility Wine/wineserver pair", "Electron GPU fallback"],
+    tags: ["Electron", "launcher", "runtime-pair", "local-profile", "dependency-repair"],
+    note: "Electron UI rendering can still fail; the local profile only captures the safest known launch flags.",
+    recommendedAction: "Use the compatibility runtime pair and disable Electron GPU compositing.",
+  },
+  {
+    game: "ARC Raiders",
     status: "Blocked",
     level: "Blocked",
+    backend: "protected",
+    steamAppId: "1808500",
+    executableMatch: "arcraiders.exe",
+    trustClass: "blockedAntiCheat",
+    riskLevel: "blocked",
+    remoteRuleId: "fallback-arc-raiders",
+    tags: ["EAC", "Protected", "Blocked", "official-support-required", "remote-rule"],
     note: "Protected multiplayer title. Local launch is blocked until official Embark/EAC support exists.",
+    recommendedAction: "Use Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC.",
+    knownIssues: ["Official anti-cheat support required"],
+    officialSupportRequired: true,
+    supportPolicy: "Blocked locally. Official Embark/EAC support is required.",
   },
-  "Minecraft Dungeons": {
-    status: "Playable",
-    level: "Gold",
-    note: "Steam build launches; Microsoft/Xbox auth and WebView plumbing are the remaining rough edges.",
+  {
+    game: "Tom Clancy's Rainbow Six Extraction",
+    status: "Blocked",
+    level: "Blocked",
+    backend: "protected",
+    executableMatch: "rainbowsix.exe",
+    trustClass: "blockedAntiCheat",
+    riskLevel: "blocked",
+    tags: ["BattlEye", "Protected", "Blocked", "official-support-required"],
+    note: "BattlEye-protected launch is blocked for local Vector play unless official support is provided.",
+    recommendedAction: "Use a supported Windows host or official remote-play path.",
+    knownIssues: ["Official anti-cheat support required"],
+    officialSupportRequired: true,
+    supportPolicy: "Blocked locally. Official BattlEye support is required.",
   },
-  "Content Warning": {
-    status: "Playable",
-    level: "Gold",
-    note: "Uses a DXVK-first D3D11 profile with dependency checks for startup stability.",
+  {
+    game: "Forza Horizon 6",
+    status: "Needs Fix",
+    level: "Silver",
+    backend: "d3dMetal",
+    fallbackBackend: "dxvk",
+    steamAppId: "2483190",
+    executableMatch: "forzahorizon6.exe",
+    localProfile: "Auto: Forza Horizon 6",
+    tags: ["DX12", "D3DMetal", "release-dependent", "local-profile"],
+    note: "Profile metadata is prepared for the DX12/D3DMetal path, but support is release-build dependent and not claimed as verified.",
+    recommendedAction: "Treat as profile metadata only until a released build is tested.",
   },
-  "Parcel Simulator": {
+  {
+    game: "Titanfall 2",
+    status: "Needs Fix",
+    level: "Silver",
+    backend: "dxvk",
+    steamAppId: "1237970",
+    executableMatch: "titanfall2.exe",
+    localProfile: "Auto: Titanfall 2",
+    dependencyRepairs: ["EA App bootstrap repair", "compatibility Wine/wineserver pair"],
+    tags: ["D3D11", "EA App", "launcher", "local-profile", "dependency-repair"],
+    note: "Local profile exists, but EA App bootstrap remains the launch risk.",
+    recommendedAction: "Repair the EA App bootstrap before treating game launch failures as renderer issues.",
+    knownIssues: ["EA App bootstrap can stall before game launch"],
+  },
+  {
+    game: "EA App / Origin Bootstrap",
+    status: "Needs Fix",
+    level: "Silver",
+    backend: "wined3d",
+    executableMatch: "eadesktop.exe",
+    localProfile: "Auto: EA App",
+    dependencyRepairs: ["launcher dependency repair", "compatibility Wine/wineserver pair"],
+    tags: ["EA App", "Origin", "launcher", "local-profile", "dependency-repair"],
+    note: "Launcher entry for games that require EA/Origin handoff; it is not a game support claim.",
+    recommendedAction: "Run the launcher dependency repair path when the installer or sign-in window fails.",
+  },
+  {
+    game: "Lethal Company",
     status: "Working",
     level: "Platinum",
-    note: "Known working with the stable UE profile and launcher-safe overrides.",
-  },
-  "Lethal Company": {
-    status: "Working",
-    level: "Platinum",
+    backend: "dxvk",
+    steamAppId: "1966720",
+    executableMatch: "lethal company.exe",
+    localProfile: "Auto: Lethal Company",
+    tags: ["DXVK", "Steam", "Verified", "local-profile"],
     note: "Known working baseline profile.",
+    recommendedAction: "Use the local baseline profile.",
   },
-  Hydroneer: {
+  {
+    game: "Hydroneer",
     status: "Working",
     level: "Platinum",
+    backend: "dxvk",
+    steamAppId: "1106840",
+    executableMatch: "hydroneer-win64-shipping.exe",
+    localProfile: "Auto: Hydroneer",
+    tags: ["DXVK", "Steam", "Verified", "local-profile"],
     note: "Known working baseline profile.",
+    recommendedAction: "Use the local baseline profile.",
   },
-  Satisfactory: {
+  {
+    game: "Satisfactory",
     status: "Playable",
     level: "Gold",
+    backend: "dxvk",
+    steamAppId: "526870",
+    executableMatch: "factorygamesteam.exe",
+    localProfile: "Auto: Satisfactory",
+    dependencyRepairs: ["Unreal dependency preset"],
+    tags: ["D3D11", "Fullscreen", "Steam", "Verified", "local-profile"],
     note: "DX11 fallback profile for reliable startup.",
+    recommendedAction: "Use the local DX11 profile and native fullscreen when possible.",
   },
-  "Escape the Backrooms": {
+  {
+    game: "Escape the Backrooms",
     status: "Playable",
     level: "Gold",
+    backend: "dxvk",
+    steamAppId: "1943950",
+    executableMatch: "escapethebackrooms.exe",
+    localProfile: "Auto: Escape the Backrooms",
+    dependencyRepairs: ["Unreal dependency preset"],
+    tags: ["D3D11", "Unreal", "Steam", "Verified", "local-profile"],
     note: "Unreal DX11 fallback profile.",
+    recommendedAction: "Use the local DX11 profile and Unreal dependency preset if first launch is unstable.",
   },
-};
+];
 
 export async function getVecPatchManifest(): Promise<VecPatchManifest> {
   try {
@@ -284,7 +503,11 @@ export async function getCompatibilityDatabase(): Promise<CompatibilityDatabase>
         entries?: unknown[];
       };
 
-      const entries = (payload.entries ?? []).map(normalizeRemoteCompatibilityEntry);
+      const manifest = await getVecPatchManifest();
+      const entries = mergeCompatibilityEntries(
+        (payload.entries ?? []).map(normalizeRemoteCompatibilityEntry),
+        manifest,
+      );
       return {
         service: payload.service ?? "vecpatch",
         version: payload.version ?? 1,
@@ -292,7 +515,7 @@ export async function getCompatibilityDatabase(): Promise<CompatibilityDatabase>
         generatedAt: payload.generated_at ?? new Date().toISOString(),
         metadata: {
           channel: payload.metadata?.channel ?? "stable",
-          entryCount: payload.metadata?.entry_count ?? entries.length,
+          entryCount: entries.length,
           signatureMode: payload.metadata?.signature_mode,
           requestId: payload.metadata?.request_id,
         },
@@ -372,33 +595,277 @@ export async function getDistributionMetadata(): Promise<DistributionMetadata> {
 }
 
 export function deriveCompatibilityEntries(manifest: VecPatchManifest): CompatibilityEntry[] {
-  return [...manifest.rules]
-    .filter((rule) => rule.enabled)
-    .sort((first, second) => (first.priority ?? 999) - (second.priority ?? 999))
-    .map((rule) => {
-      const override = compatibilityNotes[rule.name] ?? {};
-      const blocked = rule.trust_class === "blockedAntiCheat" || rule.risk_level === "blocked";
-      const status = override.status ?? (blocked ? "Blocked" : "Playable");
-      const level = override.level ?? (blocked ? "Blocked" : "Silver");
+  return mergeCompatibilityEntries([], manifest);
+}
 
-      return {
-        game: rule.name,
-        status,
-        level,
-        backend: readableBackend(rule.graphics_backend, rule.fallback_graphics_backend),
-        fallbackBackend: rule.fallback_graphics_backend,
-        steamAppId: rule.steam_app_id,
-        executableMatch: rule.executable_match,
-        trustClass: rule.trust_class ?? "singlePlayer",
-        riskLevel: rule.risk_level ?? "low",
-        patchVersion: `v${rule.rule_version ?? 1}`,
-        note: override.note ?? rule.changelog ?? "Stable VecPatch profile available.",
-        recommendedAction: blocked ? "Use Remote Play, Steam Deck, or a Windows PC until official support exists." : "Apply the recommended VecPatch profile in Vector.",
-        knownIssues: blocked ? ["Official anti-cheat support required"] : [],
-        source: "patch-rule-derived",
-        updatedAt: rule.updated_at,
-      };
-    });
+function mergeCompatibilityEntries(remoteEntries: CompatibilityEntry[], manifest: VecPatchManifest): CompatibilityEntry[] {
+  const enabledRules = [...manifest.rules]
+    .filter((rule) => rule.enabled)
+    .sort((first, second) => (first.priority ?? 999) - (second.priority ?? 999));
+  const remoteByKey = new Map<string, CompatibilityEntry>();
+
+  for (const entry of remoteEntries) {
+    remoteByKey.set(compatibilityKey(entry.game, entry.steamAppId), entry);
+  }
+
+  const entries = knownCompatibilityMatrix.map((known) => {
+    const matchedRule = findMatchingRule(known, enabledRules);
+    const remoteEntry = findMatchingRemoteEntry(known, remoteByKey);
+    return mergeKnownCompatibilityEntry(known, remoteEntry, matchedRule);
+  });
+
+  for (const rule of enabledRules) {
+    if (entries.some((entry) => ruleMatchesEntry(rule, entry))) {
+      continue;
+    }
+    entries.push(compatibilityEntryFromRule(rule));
+  }
+
+  for (const entry of remoteEntries) {
+    if (entries.some((known) => entriesMatch(known, entry))) {
+      continue;
+    }
+    entries.push(entry);
+  }
+
+  return entries.sort(compareCompatibilityEntries);
+}
+
+function mergeKnownCompatibilityEntry(
+  known: KnownCompatibilityMetadata,
+  remoteEntry?: CompatibilityEntry,
+  rule?: VecPatchRule,
+): CompatibilityEntry {
+  const hasRemoteVecPatchRule = Boolean(rule || remoteEntry?.hasRemoteVecPatchRule || known.remoteRuleId);
+  const remoteRuleId = rule?.id ?? remoteEntry?.remoteRuleId ?? known.remoteRuleId;
+  const localProfile = known.localProfile ?? remoteEntry?.localProfile ?? rule?.local_profile;
+  const dependencyRepairs = uniqueStrings([
+    ...(known.dependencyRepairs ?? []),
+    ...(remoteEntry?.dependencyRepairs ?? []),
+    ...(rule?.dependency_repairs ?? []),
+  ]);
+  const blocked = isBlockedRule(rule) || known.status === "Blocked" || remoteEntry?.status === "Blocked";
+  const officialSupportRequired = Boolean(
+    known.officialSupportRequired || remoteEntry?.officialSupportRequired || rule?.official_support_required || blocked,
+  );
+  const tags = coverageTags({
+    tags: [...known.tags, ...(remoteEntry?.tags ?? []), ...(rule?.tags ?? [])],
+    hasLocalProfile: Boolean(localProfile),
+    hasRemoteVecPatchRule,
+    hasDependencyRepairs: dependencyRepairs.length > 0,
+    officialSupportRequired,
+    blocked,
+  });
+
+  return {
+    game: known.game,
+    status: blocked ? "Blocked" : (remoteEntry?.status ?? known.status),
+    level: blocked ? "Blocked" : (remoteEntry?.level ?? known.level),
+    backend: readableBackend(rule?.graphics_backend ?? remoteEntry?.backend ?? known.backend, rule?.fallback_graphics_backend ?? remoteEntry?.fallbackBackend ?? known.fallbackBackend),
+    fallbackBackend: rule?.fallback_graphics_backend ?? remoteEntry?.fallbackBackend ?? known.fallbackBackend,
+    steamAppId: known.steamAppId ?? remoteEntry?.steamAppId ?? rule?.steam_app_id,
+    executableMatch: known.executableMatch ?? remoteEntry?.executableMatch ?? rule?.executable_match,
+    trustClass: known.trustClass ?? remoteEntry?.trustClass ?? rule?.trust_class ?? "singlePlayer",
+    riskLevel: blocked ? "blocked" : (known.riskLevel ?? remoteEntry?.riskLevel ?? rule?.risk_level ?? "low"),
+    patchVersion: rule?.rule_version ? `v${rule.rule_version}` : remoteEntry?.patchVersion ?? "local",
+    note: blocked ? officialSupportNote(known, remoteEntry, rule) : remoteEntry?.note ?? known.note,
+    recommendedAction: blocked
+      ? protectedRecommendedAction(known, remoteEntry)
+      : remoteEntry?.recommendedAction ?? known.recommendedAction,
+    knownIssues: blocked
+      ? uniqueStrings([...(known.knownIssues ?? []), ...(remoteEntry?.knownIssues ?? []), "Official anti-cheat support required"])
+      : uniqueStrings([...(known.knownIssues ?? []), ...(remoteEntry?.knownIssues ?? [])]),
+    hasLocalProfile: Boolean(localProfile),
+    localProfile: localProfile || undefined,
+    hasRemoteVecPatchRule,
+    remoteRuleId: remoteRuleId || undefined,
+    hasDependencyRepairs: dependencyRepairs.length > 0,
+    dependencyRepairs,
+    officialSupportRequired,
+    supportPolicy: blocked
+      ? known.supportPolicy ?? remoteEntry?.supportPolicy ?? rule?.support_policy ?? "Blocked locally. Official support required."
+      : known.supportPolicy ?? remoteEntry?.supportPolicy ?? rule?.support_policy,
+    tags,
+    patchState: blocked
+      ? "blocked"
+      : hasRemoteVecPatchRule
+        ? "remote-rule"
+        : localProfile
+          ? "local-profile"
+          : "metadata-only",
+    source: sourceLabel(remoteEntry, rule),
+    updatedAt: rule?.updated_at ?? remoteEntry?.updatedAt,
+  };
+}
+
+function compatibilityEntryFromRule(rule: VecPatchRule): CompatibilityEntry {
+  const blocked = isBlockedRule(rule);
+  const dependencyRepairs = uniqueStrings(rule.dependency_repairs ?? []);
+  const hasLocalProfile = Boolean(rule.local_profile);
+  const tags = coverageTags({
+    tags: rule.tags ?? [],
+    hasLocalProfile,
+    hasRemoteVecPatchRule: true,
+    hasDependencyRepairs: dependencyRepairs.length > 0,
+    officialSupportRequired: Boolean(rule.official_support_required || blocked),
+    blocked,
+  });
+
+  return {
+    game: rule.name,
+    status: blocked ? "Blocked" : "Needs Fix",
+    level: blocked ? "Blocked" : "Silver",
+    backend: readableBackend(rule.graphics_backend, rule.fallback_graphics_backend),
+    fallbackBackend: rule.fallback_graphics_backend,
+    steamAppId: rule.steam_app_id,
+    executableMatch: rule.executable_match,
+    trustClass: rule.trust_class ?? "singlePlayer",
+    riskLevel: blocked ? "blocked" : rule.risk_level ?? "low",
+    patchVersion: `v${rule.rule_version ?? 1}`,
+    note: blocked
+      ? rule.changelog || "Protected multiplayer rule is blocked locally until official support exists."
+      : rule.changelog || "VecPatch rule exists; compatibility level has not been human-reviewed.",
+    recommendedAction: blocked
+      ? "Use Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC."
+      : "Apply the VecPatch rule, then verify launch before treating this as supported.",
+    knownIssues: blocked ? ["Official anti-cheat support required"] : [],
+    hasLocalProfile,
+    localProfile: rule.local_profile,
+    hasRemoteVecPatchRule: true,
+    remoteRuleId: rule.id,
+    hasDependencyRepairs: dependencyRepairs.length > 0,
+    dependencyRepairs,
+    officialSupportRequired: Boolean(rule.official_support_required || blocked),
+    supportPolicy: blocked ? rule.support_policy ?? "Blocked locally. Official support required." : rule.support_policy,
+    tags,
+    patchState: blocked ? "blocked" : rule.patch_state ?? "remote-rule",
+    source: "remote-rule-derived",
+    updatedAt: rule.updated_at,
+  };
+}
+
+function findMatchingRule(known: KnownCompatibilityMetadata, rules: VecPatchRule[]) {
+  return rules.find((rule) => {
+    if (known.remoteRuleId && rule.id === known.remoteRuleId) {
+      return true;
+    }
+    if (known.steamAppId && rule.steam_app_id === known.steamAppId) {
+      return true;
+    }
+    return normalizeName(rule.name) === normalizeName(known.game);
+  });
+}
+
+function findMatchingRemoteEntry(
+  known: KnownCompatibilityMetadata,
+  remoteByKey: Map<string, CompatibilityEntry>,
+) {
+  return remoteByKey.get(compatibilityKey(known.game, known.steamAppId))
+    ?? remoteByKey.get(compatibilityKey(known.game))
+    ?? (known.steamAppId ? remoteByKey.get(compatibilityKey("", known.steamAppId)) : undefined);
+}
+
+function ruleMatchesEntry(rule: VecPatchRule, entry: CompatibilityEntry) {
+  if (entry.remoteRuleId && rule.id === entry.remoteRuleId) {
+    return true;
+  }
+  if (entry.steamAppId && rule.steam_app_id === entry.steamAppId) {
+    return true;
+  }
+  return normalizeName(rule.name) === normalizeName(entry.game);
+}
+
+function entriesMatch(first: CompatibilityEntry, second: CompatibilityEntry) {
+  return compatibilityKey(first.game, first.steamAppId) === compatibilityKey(second.game, second.steamAppId);
+}
+
+function compareCompatibilityEntries(first: CompatibilityEntry, second: CompatibilityEntry) {
+  const statusRank: Record<CompatibilityEntry["status"], number> = {
+    Working: 0,
+    Playable: 1,
+    "Needs Fix": 2,
+    Blocked: 3,
+  };
+  const rankDelta = statusRank[first.status] - statusRank[second.status];
+  if (rankDelta !== 0) {
+    return rankDelta;
+  }
+  return first.game.localeCompare(second.game);
+}
+
+function isBlockedRule(rule?: VecPatchRule) {
+  return rule?.trust_class === "blockedAntiCheat"
+    || rule?.trust_class === "protectedMultiplayer"
+    || rule?.risk_level === "blocked"
+    || rule?.graphics_backend === "protected";
+}
+
+function officialSupportNote(
+  known: KnownCompatibilityMetadata,
+  remoteEntry?: CompatibilityEntry,
+  rule?: VecPatchRule,
+) {
+  return known.note
+    || remoteEntry?.note
+    || rule?.changelog
+    || "Protected anti-cheat title is blocked locally until official support exists.";
+}
+
+function protectedRecommendedAction(known: KnownCompatibilityMetadata, remoteEntry?: CompatibilityEntry) {
+  return known.recommendedAction
+    ?? remoteEntry?.recommendedAction
+    ?? "Use Remote Play, Steam Deck/SteamOS Proton, Moonlight/Sunshine, or Windows PC.";
+}
+
+function sourceLabel(remoteEntry?: CompatibilityEntry, rule?: VecPatchRule) {
+  if (remoteEntry && rule) {
+    return "known-and-remote";
+  }
+  if (rule) {
+    return "patch-rule-derived";
+  }
+  if (remoteEntry) {
+    return remoteEntry.source ?? "vecpatch";
+  }
+  return "known-local-metadata";
+}
+
+function coverageTags({
+  tags,
+  hasLocalProfile,
+  hasRemoteVecPatchRule,
+  hasDependencyRepairs,
+  officialSupportRequired,
+  blocked,
+}: {
+  tags: string[];
+  hasLocalProfile: boolean;
+  hasRemoteVecPatchRule: boolean;
+  hasDependencyRepairs: boolean;
+  officialSupportRequired: boolean;
+  blocked: boolean;
+}) {
+  return uniqueStrings([
+    ...tags,
+    hasLocalProfile ? "local-profile" : "no-local-profile",
+    hasRemoteVecPatchRule ? "remote-rule" : "no-remote-rule",
+    hasDependencyRepairs ? "dependency-repair" : "no-dedicated-repair",
+    officialSupportRequired ? "official-support-required" : "",
+    blocked ? "blocked" : "",
+  ]);
+}
+
+function compatibilityKey(game: string, steamAppId?: string) {
+  const appId = steamAppId?.trim();
+  return appId ? `steam:${appId}` : `name:${normalizeName(game)}`;
+}
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 export function formatDate(value?: string) {
@@ -538,21 +1005,55 @@ function normalizeRemoteCompatibilityEntry(raw: unknown): CompatibilityEntry {
   const status = normalizeStatus(stringField(entry.status));
   const level = normalizeLevel(stringField(entry.compatibility_level) || stringField(entry.level));
   const ruleVersion = numberField(entry.rule_version);
+  const dependencyRepairs = arrayField(entry.dependency_repairs);
+  const localProfile = stringField(entry.local_profile) || stringField(entry.localProfile);
+  const remoteRuleId = stringField(entry.remote_rule_id) || stringField(entry.remoteRuleId) || stringField(entry.rule_id);
+  const trustClass = stringField(entry.trust_class) || "singlePlayer";
+  const riskLevel = stringField(entry.risk_level) || "low";
+  const blocked = status === "Blocked" || trustClass === "blockedAntiCheat" || riskLevel === "blocked";
+  const hasLocalProfile = booleanField(entry.has_local_profile) || booleanField(entry.hasLocalProfile) || Boolean(localProfile);
+  const hasRemoteVecPatchRule = booleanField(entry.has_remote_vecpatch_rule)
+    || booleanField(entry.hasRemoteVecPatchRule)
+    || Boolean(remoteRuleId);
+  const hasDependencyRepairs = booleanField(entry.has_dependency_repairs)
+    || booleanField(entry.hasDependencyRepairs)
+    || dependencyRepairs.length > 0;
+  const officialSupportRequired = booleanField(entry.official_support_required)
+    || booleanField(entry.officialSupportRequired)
+    || blocked;
+  const tags = coverageTags({
+    tags: arrayField(entry.tags),
+    hasLocalProfile,
+    hasRemoteVecPatchRule,
+    hasDependencyRepairs,
+    officialSupportRequired,
+    blocked,
+  });
 
   return {
     game: stringField(entry.game) || stringField(entry.name) || "Unknown game",
-    status,
-    level,
+    status: blocked ? "Blocked" : status,
+    level: blocked ? "Blocked" : level,
     backend: stringField(entry.recommended_backend) || stringField(entry.backend) || "auto",
     fallbackBackend: stringField(entry.fallback_backend),
     steamAppId: stringField(entry.steam_app_id),
     executableMatch: stringField(entry.executable_match),
-    trustClass: stringField(entry.trust_class) || "singlePlayer",
-    riskLevel: stringField(entry.risk_level) || "low",
+    trustClass,
+    riskLevel: blocked ? "blocked" : riskLevel,
     patchVersion: ruleVersion ? `v${ruleVersion}` : stringField(entry.patch_version) || "v1",
     note: stringField(entry.notes) || stringField(entry.note) || "Stable VecPatch profile available.",
     recommendedAction: stringField(entry.recommended_action),
     knownIssues: arrayField(entry.known_issues),
+    hasLocalProfile,
+    localProfile,
+    hasRemoteVecPatchRule,
+    remoteRuleId,
+    hasDependencyRepairs,
+    dependencyRepairs,
+    officialSupportRequired,
+    supportPolicy: stringField(entry.support_policy) || stringField(entry.supportPolicy),
+    tags,
+    patchState: stringField(entry.patch_state) || stringField(entry.patchState) || (blocked ? "blocked" : "unknown"),
     source: stringField(entry.source) || "vecpatch",
     updatedAt: stringField(entry.updated_at),
   };
@@ -579,6 +1080,16 @@ function stringField(value: unknown) {
 function numberField(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function booleanField(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return value.toLowerCase() === "true";
+  }
+  return false;
 }
 
 function arrayField(value: unknown) {

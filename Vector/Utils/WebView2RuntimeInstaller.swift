@@ -41,6 +41,9 @@ enum WebView2RuntimeInstaller {
         return url
     }()
     private static let installerFileName = "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
+    private static let downloadTimeout: TimeInterval = 120
+    private static let installerTimeout: TimeInterval = 300
+    private static let wineserverTimeout: TimeInterval = 25
 
     private static var cacheDirectory: URL {
         VectorWineInstaller.libraryFolder
@@ -61,13 +64,15 @@ enum WebView2RuntimeInstaller {
         let environment = runtimeOverrideEnvironment()
         await shutDownKnownWineservers(for: bottle)
 
-        _ = try await Wine.runWine(
-            [installerURL.path(percentEncoded: false), "/silent", "/install"],
-            bottle: bottle,
-            environment: environment,
-            collectOutput: false
-        )
-        await waitForInstallerCompletion(for: bottle, environment: environment)
+        try await withTimeout(seconds: installerTimeout, reason: "WebView2 installer timed out.") {
+            _ = try await Wine.runWine(
+                [installerURL.path(percentEncoded: false), "/silent", "/install"],
+                bottle: bottle,
+                environment: environment,
+                collectOutput: false
+            )
+        }
+        try await waitForInstallerCompletion(for: bottle, environment: environment)
 
         guard hasRuntime(in: bottle) else {
             throw NSError(
@@ -90,11 +95,31 @@ enum WebView2RuntimeInstaller {
             return cachedInstallerURL
         }
 
-        let (temporaryURL, _) = try await URLSession.shared.download(from: installerDownloadURL)
+        let request = URLRequest(
+            url: installerDownloadURL,
+            cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+            timeoutInterval: downloadTimeout
+        )
+        let (temporaryURL, response) = try await URLSession(configuration: .ephemeral).download(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<400).contains(httpResponse.statusCode) else {
+            throw NSError(
+                domain: "Vector.WebView2RuntimeInstaller",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to download WebView2 installer."]
+            )
+        }
         if fileManager.fileExists(atPath: cachedInstallerURL.path(percentEncoded: false)) {
             try fileManager.removeItem(at: cachedInstallerURL)
         }
         try fileManager.moveItem(at: temporaryURL, to: cachedInstallerURL)
+        guard isUsableCachedInstaller(cachedInstallerURL) else {
+            throw NSError(
+                domain: "Vector.WebView2RuntimeInstaller",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Downloaded WebView2 installer was incomplete."]
+            )
+        }
         return cachedInstallerURL
     }
 
@@ -128,16 +153,28 @@ enum WebView2RuntimeInstaller {
         }
     }
 
-    private static func waitForInstallerCompletion(for bottle: Bottle, environment: [String: String]) async {
-        await runWineserver(["-w"], bottle: bottle, environment: environment)
+    private static func waitForInstallerCompletion(for bottle: Bottle, environment: [String: String]) async throws {
+        try await withTimeout(seconds: wineserverTimeout, reason: "WebView2 wineserver wait timed out.") {
+            await runWineserver(["-w"], bottle: bottle, environment: environment)
+        }
     }
 
     private static func runWineserver(_ args: [String], bottle: Bottle, environment: [String: String]) async {
-        guard let stream = try? Wine.runWineserverProcess(args: args, bottle: bottle, environment: environment) else {
+        do {
+            try await withTimeout(seconds: wineserverTimeout, reason: "wineserver timed out.") {
+                guard let stream = try? Wine.runWineserverProcess(
+                    args: args,
+                    bottle: bottle,
+                    environment: environment
+                ) else {
+                    return
+                }
+
+                for await _ in stream { }
+            }
+        } catch {
             return
         }
-
-        for await _ in stream { }
     }
 
     private static func wineserverCandidates(for bottle: Bottle) -> [URL] {
@@ -248,6 +285,36 @@ enum WebView2RuntimeInstaller {
 
         return name.allSatisfy { character in
             character.isNumber || character == "."
+        }
+    }
+
+    private static func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        reason: String,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw NSError(
+                    domain: "Vector.WebView2RuntimeInstaller",
+                    code: 408,
+                    userInfo: [NSLocalizedDescriptionKey: reason]
+                )
+            }
+
+            guard let result = try await group.next() else {
+                throw NSError(
+                    domain: "Vector.WebView2RuntimeInstaller",
+                    code: 500,
+                    userInfo: [NSLocalizedDescriptionKey: "WebView2 installer task ended unexpectedly."]
+                )
+            }
+            group.cancelAll()
+            return result
         }
     }
 }

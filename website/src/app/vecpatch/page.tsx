@@ -1,5 +1,15 @@
 import Link from "next/link";
-import { ArrowUpRight, LockKeyhole, RotateCcw, ShieldCheck, type LucideIcon } from "lucide-react";
+import {
+  ArrowUpRight,
+  CheckCircle2,
+  LockKeyhole,
+  RadioTower,
+  RotateCcw,
+  ShieldAlert,
+  ShieldCheck,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +53,8 @@ export default async function VecPatchPage() {
   const manifest = await getVecPatchManifest();
   const rules = [...manifest.rules].sort((first, second) => (first.priority ?? 999) - (second.priority ?? 999));
   const protectedRules = rules.filter((rule) => rule.trust_class === "blockedAntiCheat" || rule.trust_class === "protectedMultiplayer").length;
+  const rulesWithRepairs = rules.filter((rule) => rule.dependency_repairs?.length).length;
+  const rulesWithLocalProfiles = rules.filter((rule) => rule.local_profile).length;
 
   return (
     <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
@@ -80,6 +92,8 @@ export default async function VecPatchPage() {
               ["Channel", manifest.metadata?.channel ?? "stable"],
               ["Rule count", String(manifest.metadata?.rule_count ?? rules.length)],
               ["Protected rules", String(protectedRules)],
+              ["Local profile hints", String(rulesWithLocalProfiles)],
+              ["Repair-aware rules", String(rulesWithRepairs)],
               ["Signature mode", manifest.metadata?.signature_mode ?? "unknown"],
               ["Generated", formatDate(manifest.generated_at)],
               ["Commit", manifest.commit_sha?.slice(0, 12) ?? "unknown"],
@@ -121,6 +135,9 @@ export default async function VecPatchPage() {
                   <Badge variant="outline" className="border-white/10 bg-black/20 text-muted-foreground">
                     {rule.trust_class ?? "singlePlayer"}
                   </Badge>
+                  <Badge variant="outline" className="border-white/10 bg-black/20 text-muted-foreground">
+                    {rule.patch_state ?? (rule.official_support_required ? "blocked" : "remote-rule")}
+                  </Badge>
                 </div>
               </div>
             </CardHeader>
@@ -131,8 +148,43 @@ export default async function VecPatchPage() {
                 <Meta label="Backend" value={rule.graphics_backend || "auto"} />
                 <Meta label="Fallback" value={rule.fallback_graphics_backend || "auto"} />
               </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <Signal
+                  icon={CheckCircle2}
+                  label="Local profile"
+                  value={rule.local_profile ?? "not advertised"}
+                  active={Boolean(rule.local_profile)}
+                />
+                <Signal icon={RadioTower} label="Remote rule" value={rule.id} active />
+                <Signal
+                  icon={Wrench}
+                  label="Dependency repairs"
+                  value={rule.dependency_repairs?.length ? rule.dependency_repairs.join(", ") : "none declared"}
+                  active={Boolean(rule.dependency_repairs?.length)}
+                />
+              </div>
               <Separator className="my-5 bg-white/10" />
               <p className="text-sm leading-6 text-muted-foreground">{rule.changelog || "Stable compatibility profile."}</p>
+              {rule.official_support_required ? (
+                <div className="mt-4 rounded-2xl border border-[var(--vector-danger)]/25 bg-[var(--vector-danger)]/10 p-4">
+                  <div className="flex gap-3">
+                    <ShieldAlert className="mt-0.5 size-4 shrink-0 text-[var(--vector-danger)]" />
+                    <p className="text-sm leading-6 text-[var(--vector-danger)]/90">
+                      Protected anti-cheat entry. Local launch is blocked until official support exists.
+                      {rule.support_policy ? ` ${rule.support_policy}` : ""}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+              {rule.tags?.length ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {rule.tags.map((tag) => (
+                    <Badge key={tag} variant="outline" className="border-white/10 bg-black/20 text-muted-foreground">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
               {rule.signature ? (
                 <p className="mt-4 break-all font-mono text-[11px] leading-5 text-white/55">{rule.signature}</p>
               ) : null}
@@ -149,6 +201,28 @@ function Meta({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <p className="mt-2 font-mono text-xs uppercase tracking-[0.14em] text-white">{value}</p>
+    </div>
+  );
+}
+
+function Signal({
+  icon: Icon,
+  label,
+  value,
+  active,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  active: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="flex items-center gap-2">
+        <Icon className={active ? "size-4 text-[var(--vector-signal)]" : "size-4 text-muted-foreground"} />
+        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-white/70">{value}</p>
     </div>
   );
 }

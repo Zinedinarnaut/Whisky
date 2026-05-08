@@ -121,6 +121,68 @@ extension Program {
         "nvapi",
         "nvapi64"
     ]
+    private static let lethalCompanySteamAppID = "1966720"
+    private static let lethalCompanySteamLaunchOptions = "-force-d3d11"
+    private static let lethalCompanyExecutableName = "lethal company.exe"
+    private static let lethalCompanyProfileArguments = "-force-d3d11"
+    private static let lethalCompanyDXVKD3DOverrides = "dxgi,d3d11,d3d10core,d3d9=n,b"
+    private static let lethalCompanyDLLOverridesToStrip: Set<String> = [
+        "dxgi",
+        "d3d11",
+        "d3d10core",
+        "d3d9",
+        "nvapi",
+        "nvapi64"
+    ]
+    private static let hydroneerSteamAppID = "1106840"
+    private static let hydroneerSteamLaunchOptions = "-force-d3d11 -dx11 -d3d11"
+    private static let hydroneerExecutableName = "hydroneer-win64-shipping.exe"
+    private static let hydroneerLauncherExecutableName = "hydroneer.exe"
+    private static let hydroneerProfileArguments = "-force-d3d11 -dx11 -d3d11"
+    private static let hydroneerDXVKD3DOverrides = "dxgi,d3d11,d3d10core,d3d9=n,b"
+    private static let hydroneerDLLOverridesToStrip: Set<String> = [
+        "dxgi",
+        "d3d11",
+        "d3d10core",
+        "d3d9",
+        "nvapi",
+        "nvapi64"
+    ]
+    private static let satisfactorySteamAppID = "526870"
+    private static let satisfactorySteamLaunchOptions = "-dx11"
+    private static let satisfactoryExecutableNames: Set<String> = [
+        "factorygamesteam.exe",
+        "factorygame.exe",
+        "factorygame-win64-shipping.exe"
+    ]
+    private static let satisfactoryPrimaryExecutableName = "factorygamesteam.exe"
+    private static let satisfactoryProfileArguments = "-dx11"
+    private static let satisfactoryDXVKD3DOverrides = "dxgi,d3d11,d3d10core,d3d9=n,b"
+    private static let satisfactoryDLLOverridesToStrip: Set<String> = [
+        "dxgi",
+        "d3d11",
+        "d3d10core",
+        "d3d9",
+        "d3d12",
+        "d3d12core",
+        "nvapi",
+        "nvapi64"
+    ]
+    private static let escapeBackroomsSteamAppID = "1943950"
+    private static let escapeBackroomsSteamLaunchOptions = "-dx11 -d3d11"
+    private static let escapeBackroomsExecutableName = "escapethebackrooms.exe"
+    private static let escapeBackroomsProfileArguments = "-dx11 -d3d11"
+    private static let escapeBackroomsDXVKD3DOverrides = "dxgi,d3d11,d3d10core,d3d9=n,b"
+    private static let escapeBackroomsDLLOverridesToStrip: Set<String> = [
+        "dxgi",
+        "d3d11",
+        "d3d10core",
+        "d3d9",
+        "d3d12",
+        "d3d12core",
+        "nvapi",
+        "nvapi64"
+    ]
     private static let titanfall2SteamAppID = "1237970"
     private static let titanfall2ExecutableName = "titanfall2.exe"
     private static let titanfall2ProfileArguments = ""
@@ -246,6 +308,14 @@ extension Program {
         "d3d11",
         "d3d10core",
         "d3d9"
+    ]
+    private static let profileGraphicsBackendDLLOverrideModules: Set<String> = [
+        "dxgi",
+        "d3d11",
+        "d3d10core",
+        "d3d9",
+        "d3d12",
+        "d3d12core"
     ]
     private static let dlssTranslationBuiltinD3DOverrides = "dxgi,d3d11,d3d10core=b"
     private static let dlssTranslationDLLOverridesToStrip: Set<String> = [
@@ -394,7 +464,12 @@ bCEFGPUAcceleration=False
         for (key, value) in profile.environment {
             let normalizedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !normalizedKey.isEmpty else { continue }
-            environment[normalizedKey] = value
+            applyProfileEnvironmentValue(
+                key: normalizedKey,
+                value: value,
+                profile: profile,
+                to: &environment
+            )
         }
 
         if bottle.settings.trainerSupportMode,
@@ -596,23 +671,72 @@ bCEFGPUAcceleration=False
         guard !isSteamProgramPath else { return }
 
         let activeSteamAppID = bottle.settings.activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard shouldApplySilentHillFCompatibility(activeSteamAppID: activeSteamAppID) else {
-            return
+        if shouldApplySilentHillFCompatibility(activeSteamAppID: activeSteamAppID) {
+            applyDXVKD3DOverrides(
+                Self.silentHillFDXVKD3D11Overrides,
+                stripNames: Self.silentHillFDLLOverridesToStrip,
+                to: &environment
+            )
+            applyCommonKnownGameEnvironmentMarkers(to: &environment)
         }
 
-        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let sanitized = stripDLLOverrides(from: current, names: Self.silentHillFDLLOverridesToStrip)
-        if sanitized.isEmpty {
-            environment["WINEDLLOVERRIDES"] = Self.silentHillFDXVKD3D11Overrides
-        } else {
-            environment["WINEDLLOVERRIDES"] = "\(Self.silentHillFDXVKD3D11Overrides);\(sanitized)"
-        }
-        appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+        applyAdditionalKnownGameEnvironmentOverrides(
+            activeSteamAppID: activeSteamAppID,
+            to: &environment
+        )
+    }
 
-        environment["DXVK_ENABLE_NVAPI"] = "0"
-        environment["PROTON_ENABLE_NVAPI"] = "0"
-        environment["SteamNoOverlayUIDrawing"] = "1"
-        environment["DISABLE_VK_LAYER_VALVE_steam_overlay"] = "1"
+    private func applyAdditionalKnownGameEnvironmentOverrides(
+        activeSteamAppID: String,
+        to environment: inout [String: String]
+    ) {
+        var appliedKnownPatch = false
+
+        if shouldApplyLethalCompanyCompatibility(activeSteamAppID: activeSteamAppID) {
+            applyDXVKD3DOverrides(
+                Self.lethalCompanyDXVKD3DOverrides,
+                stripNames: Self.lethalCompanyDLLOverridesToStrip,
+                to: &environment
+            )
+            appliedKnownPatch = true
+        }
+
+        if shouldApplyHydroneerCompatibility(activeSteamAppID: activeSteamAppID) {
+            applyDXVKD3DOverrides(
+                Self.hydroneerDXVKD3DOverrides,
+                stripNames: Self.hydroneerDLLOverridesToStrip,
+                to: &environment
+            )
+            appliedKnownPatch = true
+        }
+
+        if shouldApplySatisfactoryCompatibility(activeSteamAppID: activeSteamAppID) {
+            applyDXVKD3DOverrides(
+                Self.satisfactoryDXVKD3DOverrides,
+                stripNames: Self.satisfactoryDLLOverridesToStrip,
+                to: &environment
+            )
+            appliedKnownPatch = true
+        }
+
+        if shouldApplyEscapeBackroomsCompatibility(activeSteamAppID: activeSteamAppID) {
+            applyDXVKD3DOverrides(
+                Self.escapeBackroomsDXVKD3DOverrides,
+                stripNames: Self.escapeBackroomsDLLOverridesToStrip,
+                to: &environment
+            )
+            appliedKnownPatch = true
+        }
+
+        if shouldApplyForzaHorizon6Compatibility(activeSteamAppID: activeSteamAppID) {
+            applyForzaHorizon6D3DMetalOverrides(to: &environment)
+            environment["ROSETTA_ADVERTISE_AVX"] = "1"
+            appliedKnownPatch = true
+        }
+
+        if appliedKnownPatch {
+            applyCommonKnownGameEnvironmentMarkers(to: &environment)
+        }
     }
 
     func applyElectronWindowEnvironmentOverrides(to environment: inout [String: String]) {
@@ -776,6 +900,28 @@ bCEFGPUAcceleration=False
                     .appending(path: "Dungeons.exe"),
                 gameRoot
                     .appending(path: "Dungeons-Win64-Shipping.exe")
+            ]
+
+            if let shippingExecutable = candidates.first(where: {
+                FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+            }) {
+                return shippingExecutable
+            }
+        }
+
+        if shouldApplyHydroneerCompatibility(activeSteamAppID: activeSteamAppID),
+           url.lastPathComponent.caseInsensitiveCompare(Self.hydroneerLauncherExecutableName) == .orderedSame {
+            let gameRoot = url.deletingLastPathComponent()
+            let candidates = [
+                gameRoot
+                    .appending(path: "Hydroneer")
+                    .appending(path: "Binaries")
+                    .appending(path: "Win64")
+                    .appending(path: "Hydroneer-Win64-Shipping.exe"),
+                gameRoot
+                    .appending(path: "Binaries")
+                    .appending(path: "Win64")
+                    .appending(path: "Hydroneer-Win64-Shipping.exe")
             ]
 
             if let shippingExecutable = candidates.first(where: {
@@ -964,6 +1110,24 @@ bCEFGPUAcceleration=False
             // Keep Silent Hill f overrides app-scoped through AppDefaults.
             environment["DXVK_ENABLE_NVAPI"] = "0"
             environment["PROTON_ENABLE_NVAPI"] = "0"
+        }
+        if shouldApplyLethalCompanySteamEnvironmentOverrides(activeSteamAppID: activeSteamAppID)
+            || shouldApplyHydroneerSteamEnvironmentOverrides(activeSteamAppID: activeSteamAppID)
+            || shouldApplySatisfactorySteamEnvironmentOverrides(activeSteamAppID: activeSteamAppID)
+            || shouldApplyEscapeBackroomsSteamEnvironmentOverrides(activeSteamAppID: activeSteamAppID) {
+            // Keep game D3D overrides app-scoped; Steam itself only gets safe launcher markers.
+            environment["DXVK_ENABLE_NVAPI"] = "0"
+            environment["PROTON_ENABLE_NVAPI"] = "0"
+        }
+        if shouldApplyForzaHorizon6SteamEnvironmentOverrides(activeSteamAppID: activeSteamAppID) {
+            environment["DXVK_ENABLE_NVAPI"] = "0"
+            environment["PROTON_ENABLE_NVAPI"] = "0"
+            environment["ROSETTA_ADVERTISE_AVX"] = "1"
+            if shouldApplyGraphicsRoute(for: .d3dMetal) {
+                environment[Self.effectiveBackendEnvironmentKey] = GraphicsBackendMode.d3dMetal.rawValue
+                environment[Self.effectiveFallbackBackendEnvironmentKey] = GraphicsBackendMode.dxvk.rawValue
+                environment["VECTOR_FORCE_DISABLE_DXVK"] = "1"
+            }
         }
 
         if bottle.settings.steamDisableOverlay {
@@ -1239,13 +1403,35 @@ bCEFGPUAcceleration=False
             forProgramPath: programPath,
             steamAppID: steamAppID
         ) {
-            return profile
+            return shouldUseGameProfile(profile) ? profile : nil
         }
 
-        return inferredBuiltInProfile(
+        guard let inferredProfile = inferredBuiltInProfile(
             forProgramPath: programPath,
             steamAppID: steamAppID
+        ) else {
+            return nil
+        }
+        return shouldUseGameProfile(inferredProfile) ? inferredProfile : nil
+    }
+
+    private func shouldUseGameProfile(_ profile: BottleGameProfile) -> Bool {
+        guard isManagedGameProfile(profile) else {
+            return true
+        }
+
+        let assessment = VectorProtectedTitlePolicyEngine.assessLaunch(
+            programURL: url,
+            bottle: bottle,
+            activeSteamAppID: bottle.settings.activeSteamAppID,
+            detectedArtifacts: []
         )
+        return !assessment.shouldBlockLocalLaunch
+    }
+
+    private func isManagedGameProfile(_ profile: BottleGameProfile) -> Bool {
+        profile.name.hasPrefix("Auto:")
+            || profile.name.hasPrefix(BottleGamingModeManager.dispatchProfileNamePrefix)
     }
 
     private func inferredBuiltInProfile(
@@ -1331,6 +1517,90 @@ bCEFGPUAcceleration=False
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0"
                 ]
+            )
+        }
+
+        let isLethalCompany = isLethalCompanyExecutable(
+            path: normalizedProgramPath,
+            activeSteamAppID: steamAppID
+        )
+        if isLethalCompany {
+            return BottleGameProfile(
+                name: "Auto: Lethal Company",
+                executableMatch: Self.lethalCompanyExecutableName,
+                arguments: Self.lethalCompanyProfileArguments,
+                environment: [
+                    "WINEDLLOVERRIDES": "\(Self.lethalCompanyDXVKD3DOverrides);nvapi,nvapi64=d",
+                    "SteamNoOverlayUIDrawing": "1",
+                    "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
+                    "DXVK_ENABLE_NVAPI": "0",
+                    "PROTON_ENABLE_NVAPI": "0"
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
+            )
+        }
+
+        let isHydroneer = isHydroneerExecutable(
+            path: normalizedProgramPath,
+            activeSteamAppID: steamAppID
+        )
+        if isHydroneer {
+            return BottleGameProfile(
+                name: "Auto: Hydroneer",
+                executableMatch: Self.hydroneerExecutableName,
+                arguments: Self.hydroneerProfileArguments,
+                environment: [
+                    "WINEDLLOVERRIDES": "\(Self.hydroneerDXVKD3DOverrides);nvapi,nvapi64=d",
+                    "SteamNoOverlayUIDrawing": "1",
+                    "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
+                    "DXVK_ENABLE_NVAPI": "0",
+                    "PROTON_ENABLE_NVAPI": "0"
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
+            )
+        }
+
+        let isSatisfactory = isSatisfactoryExecutable(
+            path: normalizedProgramPath,
+            activeSteamAppID: steamAppID
+        )
+        if isSatisfactory {
+            return BottleGameProfile(
+                name: "Auto: Satisfactory",
+                executableMatch: Self.satisfactoryPrimaryExecutableName,
+                arguments: Self.satisfactoryProfileArguments,
+                environment: [
+                    "WINEDLLOVERRIDES": "\(Self.satisfactoryDXVKD3DOverrides);nvapi,nvapi64=d",
+                    "SteamNoOverlayUIDrawing": "1",
+                    "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
+                    "DXVK_ENABLE_NVAPI": "0",
+                    "PROTON_ENABLE_NVAPI": "0"
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
+            )
+        }
+
+        let isEscapeBackrooms = isEscapeBackroomsExecutable(
+            path: normalizedProgramPath,
+            activeSteamAppID: steamAppID
+        )
+        if isEscapeBackrooms {
+            return BottleGameProfile(
+                name: "Auto: Escape the Backrooms",
+                executableMatch: Self.escapeBackroomsExecutableName,
+                arguments: Self.escapeBackroomsProfileArguments,
+                environment: [
+                    "WINEDLLOVERRIDES": "\(Self.escapeBackroomsDXVKD3DOverrides);nvapi,nvapi64=d",
+                    "SteamNoOverlayUIDrawing": "1",
+                    "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
+                    "DXVK_ENABLE_NVAPI": "0",
+                    "PROTON_ENABLE_NVAPI": "0"
+                ],
+                graphicsBackendOverride: .dxvk,
+                fallbackGraphicsBackend: .wined3d
             )
         }
 
@@ -1462,6 +1732,54 @@ bCEFGPUAcceleration=False
         return steamContainsContentWarningInstall(inSteamRoot: url.deletingLastPathComponent())
     }
 
+    func shouldApplyLethalCompanyCompatibility(activeSteamAppID: String) -> Bool {
+        if isLethalCompanyExecutable(path: url.path(percentEncoded: false).lowercased(), activeSteamAppID: activeSteamAppID) {
+            return true
+        }
+
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        return steamContainsLethalCompanyInstall(inSteamRoot: url.deletingLastPathComponent())
+    }
+
+    func shouldApplyHydroneerCompatibility(activeSteamAppID: String) -> Bool {
+        if isHydroneerExecutable(path: url.path(percentEncoded: false).lowercased(), activeSteamAppID: activeSteamAppID) {
+            return true
+        }
+
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        return steamContainsHydroneerInstall(inSteamRoot: url.deletingLastPathComponent())
+    }
+
+    func shouldApplySatisfactoryCompatibility(activeSteamAppID: String) -> Bool {
+        if isSatisfactoryExecutable(path: url.path(percentEncoded: false).lowercased(), activeSteamAppID: activeSteamAppID) {
+            return true
+        }
+
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        return steamContainsSatisfactoryInstall(inSteamRoot: url.deletingLastPathComponent())
+    }
+
+    func shouldApplyEscapeBackroomsCompatibility(activeSteamAppID: String) -> Bool {
+        if isEscapeBackroomsExecutable(path: url.path(percentEncoded: false).lowercased(), activeSteamAppID: activeSteamAppID) {
+            return true
+        }
+
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        return steamContainsEscapeBackroomsInstall(inSteamRoot: url.deletingLastPathComponent())
+    }
+
     func shouldApplyTitanfall2Compatibility(activeSteamAppID: String) -> Bool {
         if isTitanfall2Executable(path: url.path(percentEncoded: false).lowercased(), activeSteamAppID: activeSteamAppID) {
             return true
@@ -1554,6 +1872,58 @@ bCEFGPUAcceleration=False
         return steamSettingsLaunchesApp()
     }
 
+    private func shouldApplyLethalCompanySteamEnvironmentOverrides(activeSteamAppID: String) -> Bool {
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedAppID == Self.lethalCompanySteamAppID else {
+            return false
+        }
+
+        return steamSettingsLaunchesApp()
+    }
+
+    private func shouldApplyHydroneerSteamEnvironmentOverrides(activeSteamAppID: String) -> Bool {
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedAppID == Self.hydroneerSteamAppID else {
+            return false
+        }
+
+        return steamSettingsLaunchesApp()
+    }
+
+    private func shouldApplySatisfactorySteamEnvironmentOverrides(activeSteamAppID: String) -> Bool {
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedAppID == Self.satisfactorySteamAppID else {
+            return false
+        }
+
+        return steamSettingsLaunchesApp()
+    }
+
+    private func shouldApplyEscapeBackroomsSteamEnvironmentOverrides(activeSteamAppID: String) -> Bool {
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedAppID == Self.escapeBackroomsSteamAppID else {
+            return false
+        }
+
+        return steamSettingsLaunchesApp()
+    }
+
     private func shouldApplyTitanfall2SteamEnvironmentOverrides(activeSteamAppID: String) -> Bool {
         guard isSteamProgramPath else {
             return false
@@ -1574,6 +1944,19 @@ bCEFGPUAcceleration=False
 
         let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalizedAppID == Self.silentHillFSteamAppID else {
+            return false
+        }
+
+        return steamSettingsLaunchesApp()
+    }
+
+    private func shouldApplyForzaHorizon6SteamEnvironmentOverrides(activeSteamAppID: String) -> Bool {
+        guard isSteamProgramPath else {
+            return false
+        }
+
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedAppID == Self.forzaHorizon6SteamAppID else {
             return false
         }
 
@@ -1614,6 +1997,40 @@ bCEFGPUAcceleration=False
             || path.contains("/content warning/")
             || path.contains("/contentwarning/")
             || normalizedAppID == Self.contentWarningSteamAppID
+    }
+
+    private func isLethalCompanyExecutable(path: String, activeSteamAppID: String) -> Bool {
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.contains(Self.lethalCompanyExecutableName)
+            || path.contains("/lethal company/")
+            || path.contains("/lethalcompany/")
+            || normalizedAppID == Self.lethalCompanySteamAppID
+    }
+
+    private func isHydroneerExecutable(path: String, activeSteamAppID: String) -> Bool {
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.contains(Self.hydroneerExecutableName)
+            || path.hasSuffix("/\(Self.hydroneerLauncherExecutableName)")
+            || path.contains("/hydroneer/")
+            || normalizedAppID == Self.hydroneerSteamAppID
+    }
+
+    private func isSatisfactoryExecutable(path: String, activeSteamAppID: String) -> Bool {
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matchesExecutable = Self.satisfactoryExecutableNames.contains { executableName in
+            path.contains(executableName)
+        }
+        return matchesExecutable
+            || path.contains("/satisfactory/")
+            || normalizedAppID == Self.satisfactorySteamAppID
+    }
+
+    private func isEscapeBackroomsExecutable(path: String, activeSteamAppID: String) -> Bool {
+        let normalizedAppID = activeSteamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.contains(Self.escapeBackroomsExecutableName)
+            || path.contains("/escape the backrooms/")
+            || path.contains("/escapethebackrooms/")
+            || normalizedAppID == Self.escapeBackroomsSteamAppID
     }
 
     private func isTitanfall2Executable(path: String, activeSteamAppID: String) -> Bool {
@@ -1848,6 +2265,94 @@ bCEFGPUAcceleration=False
         }
     }
 
+    private func steamContainsLethalCompanyInstall(inSteamRoot steamRoot: URL) -> Bool {
+        let commonRoot = steamRoot
+            .appending(path: "steamapps")
+            .appending(path: "common")
+        let candidates = [
+            commonRoot
+                .appending(path: "Lethal Company")
+                .appending(path: "Lethal Company.exe"),
+            commonRoot
+                .appending(path: "LethalCompany")
+                .appending(path: "Lethal Company.exe")
+        ]
+
+        return candidates.contains {
+            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+    }
+
+    private func steamContainsHydroneerInstall(inSteamRoot steamRoot: URL) -> Bool {
+        let commonRoot = steamRoot
+            .appending(path: "steamapps")
+            .appending(path: "common")
+        let candidates = [
+            commonRoot
+                .appending(path: "Hydroneer")
+                .appending(path: "Hydroneer.exe"),
+            commonRoot
+                .appending(path: "Hydroneer")
+                .appending(path: "Hydroneer")
+                .appending(path: "Binaries")
+                .appending(path: "Win64")
+                .appending(path: "Hydroneer-Win64-Shipping.exe"),
+            commonRoot
+                .appending(path: "Hydroneer")
+                .appending(path: "Binaries")
+                .appending(path: "Win64")
+                .appending(path: "Hydroneer-Win64-Shipping.exe")
+        ]
+
+        return candidates.contains {
+            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+    }
+
+    private func steamContainsSatisfactoryInstall(inSteamRoot steamRoot: URL) -> Bool {
+        let commonRoot = steamRoot
+            .appending(path: "steamapps")
+            .appending(path: "common")
+        let rootCandidates = [
+            "Satisfactory",
+            "SatisfactoryExperimental"
+        ]
+        let executableCandidates = rootCandidates.flatMap { rootName in
+            [
+                commonRoot.appending(path: rootName).appending(path: "FactoryGameSteam.exe"),
+                commonRoot.appending(path: rootName).appending(path: "FactoryGame.exe"),
+                commonRoot
+                    .appending(path: rootName)
+                    .appending(path: "FactoryGame")
+                    .appending(path: "Binaries")
+                    .appending(path: "Win64")
+                    .appending(path: "FactoryGame-Win64-Shipping.exe")
+            ]
+        }
+
+        return executableCandidates.contains {
+            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+    }
+
+    private func steamContainsEscapeBackroomsInstall(inSteamRoot steamRoot: URL) -> Bool {
+        let commonRoot = steamRoot
+            .appending(path: "steamapps")
+            .appending(path: "common")
+        let candidates = [
+            commonRoot
+                .appending(path: "Escape the Backrooms")
+                .appending(path: "EscapeTheBackrooms.exe"),
+            commonRoot
+                .appending(path: "EscapetheBackrooms")
+                .appending(path: "EscapeTheBackrooms.exe")
+        ]
+
+        return candidates.contains {
+            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+    }
+
     private func steamContainsTitanfall2Install(inSteamRoot steamRoot: URL) -> Bool {
         let commonRoot = steamRoot
             .appending(path: "steamapps")
@@ -1930,6 +2435,60 @@ bCEFGPUAcceleration=False
         }
     }
 
+    private func applyCommonKnownGameEnvironmentMarkers(to environment: inout [String: String]) {
+        environment["DXVK_ENABLE_NVAPI"] = "0"
+        environment["PROTON_ENABLE_NVAPI"] = "0"
+        environment["SteamNoOverlayUIDrawing"] = "1"
+        environment["DISABLE_VK_LAYER_VALVE_steam_overlay"] = "1"
+    }
+
+    private func shouldApplyGraphicsRoute(for backend: GraphicsBackendMode) -> Bool {
+        let configuredBackend = bottle.settings.graphicsBackendMode
+        return configuredBackend == .auto || configuredBackend == backend
+    }
+
+    private func applyDXVKD3DOverrides(
+        _ override: String,
+        stripNames: Set<String>,
+        to environment: inout [String: String]
+    ) {
+        guard shouldApplyGraphicsRoute(for: .dxvk) else {
+            appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+            return
+        }
+
+        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let sanitized = stripDLLOverrides(from: current, names: stripNames)
+        if sanitized.isEmpty {
+            environment["WINEDLLOVERRIDES"] = override
+        } else {
+            environment["WINEDLLOVERRIDES"] = "\(override);\(sanitized)"
+        }
+
+        appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+    }
+
+    private func applyForzaHorizon6D3DMetalOverrides(to environment: inout [String: String]) {
+        guard shouldApplyGraphicsRoute(for: .d3dMetal) else {
+            appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+            return
+        }
+
+        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let sanitized = stripDLLOverrides(
+            from: current,
+            names: Self.profileGraphicsBackendDLLOverrideModules.union(["nvapi", "nvapi64"])
+        )
+        if sanitized.isEmpty {
+            environment["WINEDLLOVERRIDES"] = Self.forzaHorizon6D3DMetalOverrides
+        } else {
+            environment["WINEDLLOVERRIDES"] = "\(Self.forzaHorizon6D3DMetalOverrides);\(sanitized)"
+        }
+
+        appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+        environment["VECTOR_FORCE_DISABLE_DXVK"] = "1"
+    }
+
     private func appendDLLOverride(_ environment: inout [String: String], override: String) {
         let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if current.isEmpty {
@@ -1945,6 +2504,13 @@ bCEFGPUAcceleration=False
     }
 
     private func applyHighOnLife2DLLOverrides(to environment: inout [String: String]) {
+        guard shouldApplyGraphicsRoute(for: .dxvk) else {
+            appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+            appendDLLOverride(&environment, override: Self.highOnLife2FSRNativeOverrides)
+            appendDLLOverride(&environment, override: Self.highOnLife2NvidiaPluginDisableOverrides)
+            return
+        }
+
         let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let sanitized = stripDLLOverrides(from: current, names: Self.highOnLife2DLLOverridesToStrip)
         if sanitized.isEmpty {
@@ -1959,51 +2525,35 @@ bCEFGPUAcceleration=False
     }
 
     private func applyParcelSimulatorDLLOverrides(to environment: inout [String: String]) {
-        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let sanitized = stripDLLOverrides(from: current, names: Self.parcelSimulatorDLLOverridesToStrip)
-        if sanitized.isEmpty {
-            environment["WINEDLLOVERRIDES"] = Self.parcelSimulatorBuiltinD3DOverrides
-        } else {
-            environment["WINEDLLOVERRIDES"] = "\(Self.parcelSimulatorBuiltinD3DOverrides);\(sanitized)"
-        }
-
-        appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+        applyDXVKD3DOverrides(
+            Self.parcelSimulatorBuiltinD3DOverrides,
+            stripNames: Self.parcelSimulatorDLLOverridesToStrip,
+            to: &environment
+        )
     }
 
     private func applyMinecraftDungeonsDLLOverrides(to environment: inout [String: String]) {
-        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let sanitized = stripDLLOverrides(from: current, names: Self.minecraftDungeonsDLLOverridesToStrip)
-        if sanitized.isEmpty {
-            environment["WINEDLLOVERRIDES"] = Self.minecraftDungeonsBuiltinD3DOverrides
-        } else {
-            environment["WINEDLLOVERRIDES"] = "\(Self.minecraftDungeonsBuiltinD3DOverrides);\(sanitized)"
-        }
-
-        appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+        applyDXVKD3DOverrides(
+            Self.minecraftDungeonsBuiltinD3DOverrides,
+            stripNames: Self.minecraftDungeonsDLLOverridesToStrip,
+            to: &environment
+        )
     }
 
     private func applyContentWarningDLLOverrides(to environment: inout [String: String]) {
-        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let sanitized = stripDLLOverrides(from: current, names: Self.contentWarningDLLOverridesToStrip)
-        if sanitized.isEmpty {
-            environment["WINEDLLOVERRIDES"] = Self.contentWarningDXVKD3DOverrides
-        } else {
-            environment["WINEDLLOVERRIDES"] = "\(Self.contentWarningDXVKD3DOverrides);\(sanitized)"
-        }
-
-        appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+        applyDXVKD3DOverrides(
+            Self.contentWarningDXVKD3DOverrides,
+            stripNames: Self.contentWarningDLLOverridesToStrip,
+            to: &environment
+        )
     }
 
     private func applyTitanfall2DLLOverrides(to environment: inout [String: String]) {
-        let current = environment["WINEDLLOVERRIDES"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let sanitized = stripDLLOverrides(from: current, names: Self.titanfall2DLLOverridesToStrip)
-        if sanitized.isEmpty {
-            environment["WINEDLLOVERRIDES"] = Self.titanfall2DXVKD3DOverrides
-        } else {
-            environment["WINEDLLOVERRIDES"] = "\(Self.titanfall2DXVKD3DOverrides);\(sanitized)"
-        }
-
-        appendDLLOverride(&environment, override: "nvapi,nvapi64=d")
+        applyDXVKD3DOverrides(
+            Self.titanfall2DXVKD3DOverrides,
+            stripNames: Self.titanfall2DLLOverridesToStrip,
+            to: &environment
+        )
     }
 
     private func applyOriginDLLOverrides(to environment: inout [String: String]) {
@@ -2104,6 +2654,80 @@ bCEFGPUAcceleration=False
         }
     }
 
+    private func applyProfileEnvironmentValue(
+        key: String,
+        value: String,
+        profile: BottleGameProfile,
+        to environment: inout [String: String]
+    ) {
+        guard shouldApplyProfileBackendControl(key: key, value: value, profile: profile) else {
+            if key == "WINEDLLOVERRIDES" {
+                let sanitized = stripDLLOverrides(
+                    from: value,
+                    names: Self.profileGraphicsBackendDLLOverrideModules
+                )
+                appendDLLOverrideEntries(sanitized, to: &environment)
+            }
+            return
+        }
+
+        environment[key] = value
+    }
+
+    private func shouldApplyProfileBackendControl(
+        key: String,
+        value: String,
+        profile: BottleGameProfile
+    ) -> Bool {
+        let configuredBackend = bottle.settings.graphicsBackendMode
+        guard configuredBackend != .auto else {
+            return true
+        }
+
+        let backendOverride = profile.graphicsBackendOverride
+        if let backendOverride, backendOverride == configuredBackend {
+            return true
+        }
+
+        if key == "WINEDLLOVERRIDES" {
+            return !dllOverridesReferenceGraphicsBackend(value)
+        }
+
+        let backendControlKeys: Set<String> = [
+            "VECTOR_FORCE_DISABLE_DXVK",
+            Self.effectiveBackendEnvironmentKey,
+            Self.effectiveFallbackBackendEnvironmentKey,
+            Self.dxmtNVExtensionsEnvironmentKey
+        ]
+        return !backendControlKeys.contains(key)
+    }
+
+    private func dllOverridesReferenceGraphicsBackend(_ value: String) -> Bool {
+        let modules = value
+            .split(separator: ";", omittingEmptySubsequences: true)
+            .flatMap { entry -> [String] in
+                guard let nameList = entry
+                    .split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                    .first else {
+                    return []
+                }
+                return nameList.split(separator: ",").map {
+                    $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                }
+            }
+        return modules.contains { Self.profileGraphicsBackendDLLOverrideModules.contains($0) }
+    }
+
+    private func appendDLLOverrideEntries(_ value: String, to environment: inout [String: String]) {
+        let entries = value
+            .split(separator: ";", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        for entry in entries {
+            appendDLLOverride(&environment, override: entry)
+        }
+    }
+
     func applySmartGraphicsBackendSelection(to environment: inout [String: String]) {
         guard !isSteamProgramPath else {
             return
@@ -2164,6 +2788,10 @@ bCEFGPUAcceleration=False
             || shouldApplyParcelSimulatorCompatibility(activeSteamAppID: activeSteamAppID)
             || shouldApplyMinecraftDungeonsCompatibility(activeSteamAppID: activeSteamAppID)
             || shouldApplyContentWarningCompatibility(activeSteamAppID: activeSteamAppID)
+            || shouldApplyLethalCompanyCompatibility(activeSteamAppID: activeSteamAppID)
+            || shouldApplyHydroneerCompatibility(activeSteamAppID: activeSteamAppID)
+            || shouldApplySatisfactoryCompatibility(activeSteamAppID: activeSteamAppID)
+            || shouldApplyEscapeBackroomsCompatibility(activeSteamAppID: activeSteamAppID)
             || shouldApplyTitanfall2Compatibility(activeSteamAppID: activeSteamAppID)
             || shouldApplySilentHillFCompatibility(activeSteamAppID: activeSteamAppID)
             || shouldApplyOriginCompatibility
@@ -2382,6 +3010,38 @@ bCEFGPUAcceleration=False
             )
         }
 
+        if steamContainsLethalCompanyInstall(inSteamRoot: steamRoot) {
+            ensureSteamLaunchOptions(
+                inSteamRoot: steamRoot,
+                appID: Self.lethalCompanySteamAppID,
+                launchOptions: Self.lethalCompanySteamLaunchOptions
+            )
+        }
+
+        if steamContainsHydroneerInstall(inSteamRoot: steamRoot) {
+            ensureSteamLaunchOptions(
+                inSteamRoot: steamRoot,
+                appID: Self.hydroneerSteamAppID,
+                launchOptions: Self.hydroneerSteamLaunchOptions
+            )
+        }
+
+        if steamContainsSatisfactoryInstall(inSteamRoot: steamRoot) {
+            ensureSteamLaunchOptions(
+                inSteamRoot: steamRoot,
+                appID: Self.satisfactorySteamAppID,
+                launchOptions: Self.satisfactorySteamLaunchOptions
+            )
+        }
+
+        if steamContainsEscapeBackroomsInstall(inSteamRoot: steamRoot) {
+            ensureSteamLaunchOptions(
+                inSteamRoot: steamRoot,
+                appID: Self.escapeBackroomsSteamAppID,
+                launchOptions: Self.escapeBackroomsSteamLaunchOptions
+            )
+        }
+
         if steamContainsTitanfall2Install(inSteamRoot: steamRoot) {
             ensureOriginCompatibilityConfig()
         }
@@ -2392,6 +3052,14 @@ bCEFGPUAcceleration=False
                 inSteamRoot: steamRoot,
                 appID: Self.silentHillFSteamAppID,
                 launchOptions: Self.silentHillFSteamLaunchOptions
+            )
+        }
+
+        if steamContainsForzaHorizon6Install(inSteamRoot: steamRoot) {
+            ensureSteamLaunchOptions(
+                inSteamRoot: steamRoot,
+                appID: Self.forzaHorizon6SteamAppID,
+                launchOptions: Self.forzaHorizon6ProfileArguments
             )
         }
     }

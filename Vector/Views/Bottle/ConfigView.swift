@@ -1247,12 +1247,18 @@ struct ConfigView: View {
             runWinetricksPreset("dotnet48 vcrun2022 corefonts")
             snapshotMessage = "Launch Doctor: started dependency repair preset."
             refreshMissingDependencies()
+        case .repairMicrosoftAuthDependencies:
+            let plan = DependencyRepairPlan(
+                fixIDs: [.edgeWebView2Auth, .dotNet, .visualCpp],
+                includeRuntimeDLLRepair: false
+            )
+            performDependencyRepair(plan, action: "Microsoft auth dependency repair", trackEnvironmentRepair: false)
+        case .repairMediaPlayback:
+            let plan = DependencyRepairPlan(fixIDs: [.mediaPlayback], includeRuntimeDLLRepair: true)
+            performDependencyRepair(plan, action: "media playback dependency repair", trackEnvironmentRepair: false)
         case .steamSafeUiMode:
-            bottle.settings.steamUseSafeLaunchFlags = true
-            bottle.settings.steamForceNoBrowser = true
-            bottle.settings.steamDisableOverlay = true
-            bottle.settings.steamResetHTMLCacheOnLaunch = true
-            snapshotMessage = "Launch Doctor: enabled Steam safe UI mode."
+            let plan = DependencyRepairPlan(fixIDs: [.steamWebHelperCEF], includeRuntimeDLLRepair: false)
+            performDependencyRepair(plan, action: "Steam safe UI repair", trackEnvironmentRepair: false)
         case .enableDebugLogs:
             bottle.settings.logProfile = .debug
             snapshotMessage = "Launch Doctor: log profile set to Debug."
@@ -1495,6 +1501,42 @@ struct ConfigView: View {
                 )
             }
         }
+    }
+
+    private static func clearSteamHTMLCacheDirectories(for bottle: Bottle) -> Int {
+        let usersRoot = bottle.url
+            .appending(path: "drive_c")
+            .appending(path: "users")
+        guard let users = try? FileManager.default.contentsOfDirectory(
+            at: usersRoot,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return 0
+        }
+
+        var removedCount = 0
+        for user in users {
+            let htmlCacheDirectory = user
+                .appending(path: "AppData")
+                .appending(path: "Local")
+                .appending(path: "Steam")
+                .appending(path: "htmlcache")
+            let cachePath = htmlCacheDirectory.path(percentEncoded: false)
+            guard FileManager.default.fileExists(atPath: cachePath) else {
+                continue
+            }
+
+            do {
+                try FileManager.default.removeItem(at: htmlCacheDirectory)
+                removedCount += 1
+            } catch {
+                Logger.wineKit.warning("Failed to remove Steam htmlcache at \(cachePath, privacy: .public)")
+                Logger.wineKit.warning("Steam htmlcache removal error: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        return removedCount
     }
 
     private static func refreshMinecraftDungeonsMicrosoftAuthState(for bottle: Bottle) async -> [String] {
@@ -2108,6 +2150,24 @@ struct ConfigView: View {
                 }
             }
 
+            if plan.resetSteamWebHelperFallback {
+                let removedSteamCacheItems = await MainActor.run {
+                    Self.clearSteamHTMLCacheDirectories(for: targetBottle)
+                }
+                await MainActor.run {
+                    targetBottle.settings.steamUseSafeLaunchFlags = true
+                    targetBottle.settings.steamForceNoBrowser = true
+                    targetBottle.settings.steamDisableOverlay = true
+                    targetBottle.settings.steamResetHTMLCacheOnLaunch = true
+                    clearSteamHTMLCacheResetMarker()
+                }
+                if removedSteamCacheItems > 0 {
+                    repairNotes.append("enabled Steam safe UI mode and cleared \(removedSteamCacheItems) htmlcache folders")
+                } else {
+                    repairNotes.append("enabled Steam safe UI mode and scheduled htmlcache reset on next launch")
+                }
+            }
+
             if plan.installEdgeWebView2Runtime {
                 do {
                     let result = try await WebView2RuntimeInstaller.installIfNeeded(for: targetBottle)
@@ -2121,6 +2181,8 @@ struct ConfigView: View {
                 await Winetricks.runCommand(command: winetricksCommand, bottle: targetBottle)
                 repairNotes.append("started Winetricks repair: \(winetricksCommand)")
             }
+
+            repairNotes.append(contentsOf: plan.manualRepairNotes)
 
             await MainActor.run {
                 refreshMissingDependencies()
@@ -2724,6 +2786,8 @@ private enum MissingDependencyFixID: String, Sendable {
     case mediaPlayback
     case edgeWebView2Auth
     case minecraftDungeonsSignInLoop
+    case xboxGamingServicesFallback
+    case steamWebHelperCEF
 
     var repairActionDescription: String {
         switch self {
@@ -2745,6 +2809,10 @@ private enum MissingDependencyFixID: String, Sendable {
             return "WebView2 auth repair"
         case .minecraftDungeonsSignInLoop:
             return "Minecraft Dungeons sign-in repair"
+        case .xboxGamingServicesFallback:
+            return "Xbox services fallback guidance"
+        case .steamWebHelperCEF:
+            return "Steam webhelper fallback repair"
         }
     }
 
@@ -2752,7 +2820,12 @@ private enum MissingDependencyFixID: String, Sendable {
         switch self {
         case .runtimeDLLMirror, .mediaPlayback, .dxvkPayload, .dxmtPayload, .dlssPayload:
             return true
-        case .dotNet, .visualCpp, .edgeWebView2Auth, .minecraftDungeonsSignInLoop:
+        case .dotNet,
+             .visualCpp,
+             .edgeWebView2Auth,
+             .minecraftDungeonsSignInLoop,
+             .xboxGamingServicesFallback,
+             .steamWebHelperCEF:
             return false
         }
     }
@@ -2773,8 +2846,10 @@ private struct DependencyRepairPlan: Sendable {
     let enableDLSSRuntimeTranslation: Bool
     let enableMediaPlaybackCompatibility: Bool
     let resetMinecraftAuthCaches: Bool
+    let resetSteamWebHelperFallback: Bool
     let installEdgeWebView2Runtime: Bool
     let winetricksVerbs: [String]
+    let manualRepairNotes: [String]
 
     init(fixIDs: Set<MissingDependencyFixID>, includeRuntimeDLLRepair: Bool) {
         self.fixIDs = fixIDs
@@ -2786,6 +2861,7 @@ private struct DependencyRepairPlan: Sendable {
         self.enableDLSSRuntimeTranslation = fixIDs.contains(.dlssPayload)
         self.enableMediaPlaybackCompatibility = fixIDs.contains(.mediaPlayback)
         self.resetMinecraftAuthCaches = fixIDs.contains(.minecraftDungeonsSignInLoop)
+        self.resetSteamWebHelperFallback = fixIDs.contains(.steamWebHelperCEF)
         self.installEdgeWebView2Runtime = fixIDs.contains(.edgeWebView2Auth)
             || fixIDs.contains(.minecraftDungeonsSignInLoop)
 
@@ -2801,6 +2877,16 @@ private struct DependencyRepairPlan: Sendable {
         Self.appendIfNeeded("l3codecx", to: &verbs, when: fixIDs.contains(.mediaPlayback))
         Self.appendIfNeeded("devenum", to: &verbs, when: fixIDs.contains(.mediaPlayback))
         self.winetricksVerbs = verbs
+
+        var notes: [String] = []
+        if fixIDs.contains(.xboxGamingServicesFallback) {
+            notes.append(
+                "Xbox Identity/Gaming Services cannot be installed automatically in Wine. "
+                    + "Use the WebView/cache repair first; if auth still loops, verify the account "
+                    + "in the Microsoft Xbox app or Minecraft Launcher on Windows."
+            )
+        }
+        self.manualRepairNotes = notes
     }
 
     var isEmpty: Bool {
@@ -2811,8 +2897,10 @@ private struct DependencyRepairPlan: Sendable {
             && !enableDLSSRuntimeTranslation
             && !enableMediaPlaybackCompatibility
             && !resetMinecraftAuthCaches
+            && !resetSteamWebHelperFallback
             && !installEdgeWebView2Runtime
             && winetricksVerbs.isEmpty
+            && manualRepairNotes.isEmpty
     }
 
     var winetricksCommand: String? {
@@ -2845,8 +2933,19 @@ private enum MissingDependencyDetector {
         "d3d11.dll",
         "d3d10core.dll",
         "d3d9.dll",
+        "d3d12.dll",
+        "d3d12core.dll",
+        "vulkan-1.dll",
+        "mf.dll",
         "mfplat.dll",
+        "mfreadwrite.dll",
+        "mfplay.dll",
+        "evr.dll",
         "quartz.dll",
+        "devenum.dll",
+        "wmvcore.dll",
+        "msmpeg2vdec.dll",
+        "msmpeg2adec.dll",
         "winegstreamer.dll"
     ]
     private static let dxvkCriticalDLLs = [
@@ -2858,9 +2957,26 @@ private enum MissingDependencyDetector {
         "mf.dll",
         "mfplat.dll",
         "mfreadwrite.dll",
+        "mfplay.dll",
+        "evr.dll",
         "quartz.dll",
         "devenum.dll",
+        "wmvcore.dll",
+        "msmpeg2vdec.dll",
+        "msmpeg2adec.dll",
         "winegstreamer.dll"
+    ]
+    private static let visualCppRuntimeDLLs = [
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+        "concrt140.dll",
+        "ucrtbase.dll"
+    ]
+    private static let dotNetRuntimeHints = [
+        "mscoree.dll",
+        "mscorsvw.exe",
+        "fusion.dll"
     ]
 
     static func detect(for bottle: Bottle) -> [MissingDependencyFix] {
@@ -2868,12 +2984,13 @@ private enum MissingDependencyDetector {
         var fixes: [MissingDependencyFix] = []
         let runtimeMirrorHealth = inspectRuntimeDLLMirror(for: bottle)
         let hasWebView2Runtime = WebView2RuntimeInstaller.hasRuntime(in: bottle)
-        let hasDotNetRuntime = hasDotNetRuntime(in: bottle)
-        let hasVisualCppRuntime = hasVisualCppRuntime(in: bottle)
+        let missingDotNetRuntimeHints = missingDotNetRuntimeHints(in: bottle)
+        let missingVisualCppRuntimeDLLs = missingVisualCppRuntimeDLLs(in: bottle)
         let missingMediaComponents = missingMediaPlaybackDLLs(in: bottle)
         let dxvkExpected = expectsDXVK(for: bottle)
         let dxmtExpected = expectsDXMT(for: bottle)
         let hasDXVKPayload = hasDXVKPayloadInBottle(in: bottle)
+        let hasDXMTPayload = hasDXMTPayloadInBottle(in: bottle)
         let hasDLSSRuntimePayload = hasDLSSRuntimePayload(in: bottle)
         let shouldSuggestRuntimeMirrorRepair = shouldSuggestRuntimeMirrorRepair(
             runtimeMirrorHealth,
@@ -2895,14 +3012,16 @@ private enum MissingDependencyDetector {
 
         let hasDotNetMissing = combinedLog.localizedCaseInsensitiveContains("mscoree.dll")
             || combinedLog.localizedCaseInsensitiveContains("mscorsvw.exe")
-        if hasDotNetMissing || !hasDotNetRuntime && bottle.settings.trainerSupportMode {
+            || combinedLog.localizedCaseInsensitiveContains("fusion.dll")
+            || combinedLog.localizedCaseInsensitiveContains(".net runtime")
+        if hasDotNetMissing || !missingDotNetRuntimeHints.isEmpty && bottle.settings.trainerSupportMode {
             fixes.append(
                 MissingDependencyFix(
                     id: .dotNet,
                     title: ".NET Runtime Components Missing",
                     detail: hasDotNetMissing
                         ? "Logs show mscoree/.NET loader failures for this bottle."
-                        : "Trainer and launcher compatibility mode is enabled, but the bottle does not appear to have the required .NET runtime files yet.",
+                        : ".NET-dependent tools are enabled, but missing runtime markers were found: \(missingDotNetRuntimeHints.joined(separator: ", ")).",
                     actionTitle: "Install .NET + Core Dependencies"
                 )
             )
@@ -2910,14 +3029,18 @@ private enum MissingDependencyDetector {
 
         let hasVisualCppMissing = combinedLog.localizedCaseInsensitiveContains("vcruntime")
             || combinedLog.localizedCaseInsensitiveContains("msvcp")
-        if hasVisualCppMissing || !hasVisualCppRuntime && hasDotNetMissing {
+            || combinedLog.localizedCaseInsensitiveContains("msvcr")
+            || combinedLog.localizedCaseInsensitiveContains("api-ms-win-crt")
+            || combinedLog.localizedCaseInsensitiveContains("ucrtbase.dll")
+            || combinedLog.localizedCaseInsensitiveContains("concrt140.dll")
+        if hasVisualCppMissing || !missingVisualCppRuntimeDLLs.isEmpty && hasDotNetMissing {
             fixes.append(
                 MissingDependencyFix(
                     id: .visualCpp,
                     title: "Visual C++ Runtime Missing",
                     detail: hasVisualCppMissing
                         ? "Game/runtime logs indicate missing VC runtime binaries."
-                        : "Core VC runtime DLLs are missing from the bottle runtime.",
+                        : "Core VC runtime DLLs are missing: \(missingVisualCppRuntimeDLLs.joined(separator: ", ")).",
                     actionTitle: "Install Visual C++ Runtime"
                 )
             )
@@ -2934,12 +3057,12 @@ private enum MissingDependencyDetector {
             )
         }
 
-        if dxmtExpected && !Wine.isDXMTPayloadReady() {
+        if dxmtExpected && (!Wine.isDXMTPayloadReady() || !hasDXMTPayload) {
             fixes.append(
                 MissingDependencyFix(
                     id: .dxmtPayload,
                     title: "DXMT Payload Missing",
-                    detail: "This bottle is expected to use DXMT, but the DXMT payload is not fully installed yet.",
+                    detail: "This bottle expects DXMT, but the cached payload or DLL deployment is incomplete.",
                     actionTitle: "Install DXMT Payload"
                 )
             )
@@ -2963,11 +3086,17 @@ private enum MissingDependencyDetector {
 
         let hasMediaPlaybackMissing =
             !missingMediaComponents.isEmpty
+            || combinedLog.localizedCaseInsensitiveContains("media foundation")
             || combinedLog.localizedCaseInsensitiveContains("mfplat.dll")
             || combinedLog.localizedCaseInsensitiveContains("mfreadwrite.dll")
+            || combinedLog.localizedCaseInsensitiveContains("mfplay.dll")
+            || combinedLog.localizedCaseInsensitiveContains("evr.dll")
             || combinedLog.localizedCaseInsensitiveContains("winegstreamer")
             || combinedLog.localizedCaseInsensitiveContains("wmvcore.dll")
+            || combinedLog.localizedCaseInsensitiveContains("msmpeg2vdec.dll")
+            || combinedLog.localizedCaseInsensitiveContains("msmpeg2adec.dll")
             || combinedLog.localizedCaseInsensitiveContains("quartz.dll")
+            || combinedLog.localizedCaseInsensitiveContains("codec")
             || combinedLog.localizedCaseInsensitiveContains("failed to initialize video")
             || combinedLog.localizedCaseInsensitiveContains("failed to play video")
             || combinedLog.localizedCaseInsensitiveContains("video playback")
@@ -3011,12 +3140,27 @@ private enum MissingDependencyDetector {
         }()
         let hasWebAuthIssue = combinedLog.localizedCaseInsensitiveContains("webview")
             || combinedLog.localizedCaseInsensitiveContains("edgewebview")
+            || combinedLog.localizedCaseInsensitiveContains("webview2")
             || combinedLog.localizedCaseInsensitiveContains("login page")
+            || combinedLog.localizedCaseInsensitiveContains("login.live.com")
+            || combinedLog.localizedCaseInsensitiveContains("account.live.com")
+            || combinedLog.localizedCaseInsensitiveContains("sisu.xboxlive.com")
+            || combinedLog.localizedCaseInsensitiveContains("xboxlive")
+            || combinedLog.localizedCaseInsensitiveContains("ms-xal")
+            || combinedLog.localizedCaseInsensitiveContains("ms-xbl")
         let hasMinecraftDungeonsSignInLoop = combinedLog.localizedCaseInsensitiveContains(
             "you have reached a page that is not normally shown"
         ) || combinedLog.localizedCaseInsensitiveContains(
             "microsoft will never ask you to copy or share this url"
         )
+        let missingXboxServices = missingXboxIdentityServiceNames(in: bottle)
+        let hasXboxServiceHandoffIssue = hasWebAuthIssue && !missingXboxServices.isEmpty
+        let hasSteamWebHelperIssue = combinedLog.localizedCaseInsensitiveContains("steamwebhelper")
+            || combinedLog.localizedCaseInsensitiveContains("steamwebhelper.exe")
+            || combinedLog.localizedCaseInsensitiveContains("steam cef")
+            || combinedLog.localizedCaseInsensitiveContains("cef")
+                && combinedLog.localizedCaseInsensitiveContains("steam")
+            || combinedLog.localizedCaseInsensitiveContains("htmlcache")
 
         if !isMinecraftDungeonsBottle && !hasWebView2Runtime && hasWebAuthIssue {
             fixes.append(
@@ -3029,9 +3173,35 @@ private enum MissingDependencyDetector {
             )
         }
 
+        if !isMinecraftDungeonsBottle && hasXboxServiceHandoffIssue {
+            fixes.append(
+                MissingDependencyFix(
+                    id: .xboxGamingServicesFallback,
+                    title: "Xbox Identity Services Manual Fallback",
+                    detail: xboxGamingServicesFallbackDetail(missingServices: missingXboxServices),
+                    actionTitle: "Show Manual Fallback"
+                )
+            )
+        }
+
+        if hasSteamWebHelperIssue {
+            let safeModeAlreadyEnabled = bottle.settings.steamForceNoBrowser
+                && bottle.settings.steamResetHTMLCacheOnLaunch
+                && bottle.settings.steamDisableOverlay
+            fixes.append(
+                MissingDependencyFix(
+                    id: .steamWebHelperCEF,
+                    title: "Steam Webhelper/CEF Recovery",
+                    detail: safeModeAlreadyEnabled
+                        ? "Steam CEF/webhelper faults are still present. Vector can clear htmlcache again; a Steam client update or remote CEF fix may still be required."
+                        : "Logs point at Steam webhelper/CEF/htmlcache trouble. Vector can apply safe UI flags and clear htmlcache; it cannot install a replacement Steam CEF runtime.",
+                    actionTitle: safeModeAlreadyEnabled ? "Clear Steam Cache Again" : "Apply Steam Safe UI"
+                )
+            )
+        }
+
         if isMinecraftDungeonsBottle {
             let missingWebViewRuntime = !hasWebView2Runtime
-            let missingXboxServices = missingXboxIdentityServiceNames(in: bottle)
             let xboxIdentityLayerUnavailable = !missingXboxServices.isEmpty && hasWebView2Runtime
             if hasMinecraftDungeonsSignInLoop
                 || missingWebViewRuntime
@@ -3063,6 +3233,17 @@ private enum MissingDependencyDetector {
                     )
                 )
             }
+
+            if hasXboxServiceHandoffIssue {
+                fixes.append(
+                    MissingDependencyFix(
+                        id: .xboxGamingServicesFallback,
+                        title: "Xbox Identity Services Manual Fallback",
+                        detail: xboxGamingServicesFallbackDetail(missingServices: missingXboxServices),
+                        actionTitle: "Show Manual Fallback"
+                    )
+                )
+            }
         }
 
         return fixes
@@ -3074,6 +3255,14 @@ private enum MissingDependencyDetector {
         The Microsoft web login is likely reaching the Xbox handoff, but this Wine prefix does not expose the Windows \
         Xbox Identity/Gaming Services layer (\(services)). Vector can reset cached tokens and callback handlers, but \
         the real Microsoft Store/Xbox services layer cannot be installed automatically in Wine yet.
+        """
+    }
+
+    private static func xboxGamingServicesFallbackDetail(missingServices: [String]) -> String {
+        let services = missingServices.prefix(4).joined(separator: ", ")
+        return """
+        Missing Windows Xbox Identity/Gaming Services layer: \(services). Vector can repair WebView2, caches, and \
+        callback handlers, but it cannot install the Microsoft Store Xbox service stack into Wine automatically.
         """
     }
 
@@ -3116,38 +3305,73 @@ private enum MissingDependencyDetector {
         return bottle.settings.dlssRuntimeTranslationEnabled
     }
 
-    private static func hasDotNetRuntime(in bottle: Bottle) -> Bool {
+    private static func missingDotNetRuntimeHints(in bottle: Bottle) -> [String] {
         let windows = bottle.url.appending(path: "drive_c").appending(path: "windows")
-        let candidates = [
-            windows.appending(path: "system32").appending(path: "mscoree.dll"),
-            windows.appending(path: "syswow64").appending(path: "mscoree.dll"),
+        let fileManager = FileManager.default
+        var missing: [String] = []
+        for dllName in dotNetRuntimeHints {
+            let candidates = [
+                windows.appending(path: "system32").appending(path: dllName),
+                windows.appending(path: "syswow64").appending(path: dllName)
+            ]
+            if !candidates.contains(where: { fileManager.fileExists(atPath: $0.path(percentEncoded: false)) }) {
+                missing.append(dllName)
+            }
+        }
+
+        let frameworkCandidates = [
             windows
                 .appending(path: "Microsoft.NET")
                 .appending(path: "Framework")
                 .appending(path: "v4.0.30319")
+                .appending(path: "mscorlib.dll"),
+            windows
+                .appending(path: "Microsoft.NET")
+                .appending(path: "Framework64")
+                .appending(path: "v4.0.30319")
                 .appending(path: "mscorlib.dll")
         ]
-        return candidates.contains {
-            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        if !frameworkCandidates.contains(where: { fileManager.fileExists(atPath: $0.path(percentEncoded: false)) }) {
+            missing.append("Microsoft.NET Framework v4")
         }
+        return missing
     }
 
-    private static func hasVisualCppRuntime(in bottle: Bottle) -> Bool {
+    private static func missingVisualCppRuntimeDLLs(in bottle: Bottle) -> [String] {
         let windows = bottle.url.appending(path: "drive_c").appending(path: "windows")
-        let candidates = [
-            windows.appending(path: "system32").appending(path: "vcruntime140.dll"),
-            windows.appending(path: "system32").appending(path: "msvcp140.dll"),
-            windows.appending(path: "syswow64").appending(path: "vcruntime140.dll"),
-            windows.appending(path: "syswow64").appending(path: "msvcp140.dll")
-        ]
-        return candidates.contains {
-            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        let fileManager = FileManager.default
+        return visualCppRuntimeDLLs.filter { dllName in
+            let candidates = [
+                windows.appending(path: "system32").appending(path: dllName),
+                windows.appending(path: "syswow64").appending(path: dllName)
+            ]
+            return !candidates.contains {
+                fileManager.fileExists(atPath: $0.path(percentEncoded: false))
+            }
         }
     }
 
     private static func hasDXVKPayloadInBottle(in bottle: Bottle) -> Bool {
         let windows = bottle.url.appending(path: "drive_c").appending(path: "windows")
         let candidates = dxvkCriticalDLLs.flatMap { dllName in
+            [
+                windows.appending(path: "system32").appending(path: dllName),
+                windows.appending(path: "syswow64").appending(path: dllName)
+            ]
+        }
+        return candidates.allSatisfy {
+            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+    }
+
+    private static func hasDXMTPayloadInBottle(in bottle: Bottle) -> Bool {
+        let windows = bottle.url.appending(path: "drive_c").appending(path: "windows")
+        let requiredDLLs = [
+            "dxgi.dll",
+            "d3d11.dll",
+            "d3d10core.dll"
+        ]
+        let candidates = requiredDLLs.flatMap { dllName in
             [
                 windows.appending(path: "system32").appending(path: dllName),
                 windows.appending(path: "syswow64").appending(path: dllName)
@@ -3340,6 +3564,8 @@ private enum LaunchDoctorFixID: String, CaseIterable, Sendable, Identifiable {
     case switchToCompatibilityRuntime
     case forceD3D11Compatibility
     case installCoreDependencies
+    case repairMicrosoftAuthDependencies
+    case repairMediaPlayback
     case steamSafeUiMode
     case enableDebugLogs
     case enableSafeMultiplayerMode
@@ -3354,6 +3580,10 @@ private enum LaunchDoctorFixID: String, CaseIterable, Sendable, Identifiable {
             return "Force D3D11 Compatibility Path"
         case .installCoreDependencies:
             return "Install Core Dependencies"
+        case .repairMicrosoftAuthDependencies:
+            return "Repair Microsoft Auth Runtime"
+        case .repairMediaPlayback:
+            return "Repair Media Playback"
         case .steamSafeUiMode:
             return "Apply Steam Safe UI Mode"
         case .enableDebugLogs:
@@ -3439,18 +3669,20 @@ private actor LaunchIntelligenceService {
             severity: .warning,
             title: "Microsoft sign-in WebView fault detected",
             detail: "The auth window reached an invalid callback page or WebView runtime fault.",
-            fix: .installCoreDependencies,
+            fix: .repairMicrosoftAuthDependencies,
             findings: &findings,
             fixes: &suggestedFixes
         )
         addFinding(
             condition: combinedLog.localizedCaseInsensitiveContains("mfplat.dll")
+                || combinedLog.localizedCaseInsensitiveContains("mfreadwrite.dll")
                 || combinedLog.localizedCaseInsensitiveContains("winegstreamer")
+                || combinedLog.localizedCaseInsensitiveContains("media foundation")
                 || combinedLog.localizedCaseInsensitiveContains("video playback"),
             severity: .warning,
             title: "Media playback dependency fault detected",
             detail: "The logs point at Windows media playback components needed by game intro/auth flows.",
-            fix: .installCoreDependencies,
+            fix: .repairMediaPlayback,
             findings: &findings,
             fixes: &suggestedFixes
         )
@@ -3460,6 +3692,17 @@ private actor LaunchIntelligenceService {
             severity: .warning,
             title: ".NET runtime components are missing",
             detail: "The logs indicate missing mscoree/.NET dependencies often required by launchers and tools.",
+            fix: .installCoreDependencies,
+            findings: &findings,
+            fixes: &suggestedFixes
+        )
+        addFinding(
+            condition: combinedLog.localizedCaseInsensitiveContains("vcruntime")
+                || combinedLog.localizedCaseInsensitiveContains("msvcp")
+                || combinedLog.localizedCaseInsensitiveContains("api-ms-win-crt"),
+            severity: .warning,
+            title: "Visual C++ runtime components are missing",
+            detail: "The logs indicate missing Visual C++/UCRT DLLs often required by launchers and games.",
             fix: .installCoreDependencies,
             findings: &findings,
             fixes: &suggestedFixes
@@ -3574,9 +3817,13 @@ private extension LaunchIntelligenceService {
         case .forceD3D11Compatibility:
             return "Applies DirectX 11 fallback defaults and graphics compatibility options."
         case .installCoreDependencies:
-            return "Runs dotnet48 + vcrun2022 + corefonts via Winetricks."
+            return "Runs dotnet48 + vcrun2022 + corefonts via Winetricks for .NET/VC++ loader faults."
+        case .repairMicrosoftAuthDependencies:
+            return "Installs WebView2 when possible and repairs .NET/Visual C++ auth runtime dependencies."
+        case .repairMediaPlayback:
+            return "Repairs mirrored Media Foundation/Quartz DLLs and applies media compatibility verbs."
         case .steamSafeUiMode:
-            return "Enables conservative Steam CEF/browser/overlay-safe startup options."
+            return "Enables Steam CEF/browser/overlay-safe startup options and clears htmlcache."
         case .enableDebugLogs:
             return "Sets the bottle log profile to Debug for deeper diagnostics."
         case .enableSafeMultiplayerMode:

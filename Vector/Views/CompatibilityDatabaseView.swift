@@ -19,6 +19,8 @@
 import SwiftUI
 import VectorKit
 
+// swiftlint:disable file_length
+
 private enum CompatibilityRatingFilter: String, CaseIterable, Identifiable {
     case all
     case playable
@@ -69,6 +71,12 @@ struct CompatibilityDatabaseView: View {
 
     @State private var searchQuery = ""
     @State private var ratingFilter: CompatibilityRatingFilter = .all
+    @State private var tagFilter = CompatibilityFilterPanel.allTagsValue
+
+    private var availableTags: [String] {
+        Array(Set(games.flatMap(\.searchableTags)))
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
 
     private var filteredGames: [CompatibilityGame] {
         games
@@ -81,6 +89,11 @@ struct CompatibilityDatabaseView: View {
                 }
 
                 guard matchesFilter else {
+                    return false
+                }
+
+                if tagFilter != CompatibilityFilterPanel.allTagsValue,
+                   !game.searchableTags.contains(where: { $0.caseInsensitiveCompare(tagFilter) == .orderedSame }) {
                     return false
                 }
 
@@ -97,7 +110,11 @@ struct CompatibilityDatabaseView: View {
                     game.recommendedPreset.lowercased(),
                     game.recommendedArguments.lowercased(),
                     game.notes.joined(separator: " ").lowercased(),
-                    game.tags.joined(separator: " ").lowercased(),
+                    game.searchableTags.joined(separator: " ").lowercased(),
+                    game.localProfileName?.lowercased() ?? "",
+                    game.remoteVecPatchRuleID?.lowercased() ?? "",
+                    game.dependencyRepairs.joined(separator: " ").lowercased(),
+                    game.trustClassification.rawValue.lowercased(),
                     game.antiCheatProvider?.lowercased() ?? "",
                     game.supportContactStatus.lowercased()
                 ].joined(separator: " ")
@@ -116,7 +133,13 @@ struct CompatibilityDatabaseView: View {
         VStack(alignment: .leading, spacing: 14) {
             CompatibilityDatabaseHeader(totalCount: games.count, filteredCount: filteredGames.count)
             CompatibilitySummaryStrip(games: games)
-            CompatibilityFilterPanel(searchQuery: $searchQuery, ratingFilter: $ratingFilter)
+            CompatibilityCoverageStrip(games: games)
+            CompatibilityFilterPanel(
+                searchQuery: $searchQuery,
+                ratingFilter: $ratingFilter,
+                tagFilter: $tagFilter,
+                availableTags: availableTags
+            )
 
             ScrollView {
                 if filteredGames.isEmpty {
@@ -193,7 +216,6 @@ private struct CompatibilitySummaryStrip: View {
         }
     }
 }
-
 private struct CompatibilitySummaryPill: View {
     let rating: CompatibilityRating
     let count: Int
@@ -211,16 +233,85 @@ private struct CompatibilitySummaryPill: View {
     }
 }
 
+private struct CompatibilityCoverageStrip: View {
+    let games: [CompatibilityGame]
+
+    private var coverageItems: [CompatibilityCoverageSummaryItem] {
+        [
+            CompatibilityCoverageSummaryItem(
+                title: "Local profiles",
+                count: games.filter { $0.hasLocalProfile }.count,
+                icon: "slider.horizontal.3",
+                color: .blue
+            ),
+            CompatibilityCoverageSummaryItem(
+                title: "Remote rules",
+                count: games.filter { $0.hasRemoteVecPatchRule }.count,
+                icon: "antenna.radiowaves.left.and.right",
+                color: .mint
+            ),
+            CompatibilityCoverageSummaryItem(
+                title: "Dependency repairs",
+                count: games.filter { $0.hasDependencyRepairs }.count,
+                icon: "wrench.and.screwdriver",
+                color: .orange
+            ),
+            CompatibilityCoverageSummaryItem(
+                title: "Official support required",
+                count: games.filter { $0.officialSupportRequired }.count,
+                icon: "lock.shield",
+                color: .red
+            )
+        ]
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(coverageItems) { item in
+                VectorPanelCard {
+                    HStack(spacing: 8) {
+                        Image(systemName: item.icon)
+                            .foregroundStyle(item.color.opacity(0.9))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(item.count)")
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.94))
+                            Text(item.title)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(VectorPanelTokens.subtleText)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+}
+
+private struct CompatibilityCoverageSummaryItem: Identifiable {
+    let title: String
+    let count: Int
+    let icon: String
+    let color: Color
+
+    var id: String { title }
+}
+
 private struct CompatibilityFilterPanel: View {
+    static let allTagsValue = "__all_tags__"
+
     @Binding var searchQuery: String
     @Binding var ratingFilter: CompatibilityRatingFilter
+    @Binding var tagFilter: String
+    let availableTags: [String]
 
     var body: some View {
         VectorPanelCard {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(VectorPanelTokens.subtleText)
-                TextField("Search games, AppID, store, notes, or anti-cheat", text: $searchQuery)
+                TextField("Search games, AppID, tags, patch state, repairs, or anti-cheat", text: $searchQuery)
                     .textFieldStyle(.plain)
                 Picker("Status", selection: $ratingFilter) {
                     ForEach(CompatibilityRatingFilter.allCases) { option in
@@ -229,6 +320,14 @@ private struct CompatibilityFilterPanel: View {
                 }
                 .pickerStyle(.menu)
                 .frame(width: 160)
+                Picker("Tag", selection: $tagFilter) {
+                    Text("Tag: All").tag(Self.allTagsValue)
+                    ForEach(availableTags, id: \.self) { tag in
+                        Text(tag).tag(tag)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 190)
             }
         }
     }
@@ -251,6 +350,16 @@ private struct CompatibilityGameCard: View {
         return "Default bottle settings"
     }
 
+    private var repairSummary: String {
+        if game.dependencyRepairs.isEmpty {
+            return "No dedicated repair"
+        }
+        if game.dependencyRepairs.count == 1 {
+            return game.dependencyRepairs[0]
+        }
+        return "\(game.dependencyRepairs.count) repair paths"
+    }
+
     var body: some View {
         VectorPanelCard {
             VStack(alignment: .leading, spacing: 10) {
@@ -271,6 +380,24 @@ private struct CompatibilityGameCard: View {
                     }
                     Spacer(minLength: 8)
                     CompatibilityRatingBadge(rating: game.rating)
+                }
+
+                HStack(spacing: 6) {
+                    CompatibilityCoveragePill(
+                        text: game.localProfileName ?? "No local profile",
+                        icon: game.hasLocalProfile ? "slider.horizontal.3" : "slash.circle",
+                        tint: game.hasLocalProfile ? .blue : .secondary
+                    )
+                    CompatibilityCoveragePill(
+                        text: game.hasRemoteVecPatchRule ? "Remote VecPatch rule" : "No remote rule",
+                        icon: game.hasRemoteVecPatchRule ? "antenna.radiowaves.left.and.right" : "wifi.slash",
+                        tint: game.hasRemoteVecPatchRule ? .mint : .secondary
+                    )
+                    CompatibilityCoveragePill(
+                        text: repairSummary,
+                        icon: game.hasDependencyRepairs ? "wrench.and.screwdriver" : "checkmark.seal",
+                        tint: game.hasDependencyRepairs ? .orange : .secondary
+                    )
                 }
 
                 if !game.tags.isEmpty {
@@ -304,6 +431,14 @@ private struct CompatibilityGameCard: View {
                         .font(.system(size: 12))
                         .foregroundStyle(VectorPanelTokens.subtleText)
                         .lineLimit(2)
+                }
+
+                if !game.dependencyRepairs.isEmpty {
+                    Text("Repairs: \(game.dependencyRepairs.joined(separator: ", "))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                        .help(game.dependencyRepairs.joined(separator: "\n"))
                 }
 
                 if game.trustClassification == .blockedAntiCheat || game.trustClassification == .protectedMultiplayer {
@@ -342,6 +477,30 @@ private struct CompatibilityMetadataPill: View {
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
         .background(Color.white.opacity(0.05), in: Capsule())
+    }
+}
+
+private struct CompatibilityCoveragePill: View {
+    let text: String
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+            Text(text)
+                .lineLimit(1)
+        }
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(tint.opacity(0.95))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.1), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(tint.opacity(0.16), lineWidth: 1)
+        )
     }
 }
 

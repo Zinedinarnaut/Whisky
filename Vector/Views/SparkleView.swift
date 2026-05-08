@@ -161,6 +161,29 @@ private struct HomeBottleCard: View {
     }
 }
 
+private struct PatchStatePill: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .foregroundStyle(VectorPanelTokens.subtleText)
+            Text(value)
+                .foregroundStyle(tint.opacity(0.95))
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.05), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(tint.opacity(0.16), lineWidth: 1)
+        )
+    }
+}
+
 struct PatchCenterView: View {
     let bottles: [Bottle]
     @Binding var selectedBottleURL: URL?
@@ -225,7 +248,16 @@ struct PatchCenterView: View {
         guard let dispatchStatus else {
             return loading ? "Checking..." : "No Metadata"
         }
-        return dispatchStatus.updateAvailable ? "Update Available" : "Up To Date"
+        if dispatchStatus.effectiveRuleCount == 0 {
+            return "No Effective Rules"
+        }
+        if dispatchStatus.updateAvailable {
+            return "Update Available"
+        }
+        if dispatchStatus.alreadyApplied {
+            return "Already Applied"
+        }
+        return "No-op"
     }
 
     private var statusBadgeColor: Color {
@@ -235,7 +267,60 @@ struct PatchCenterView: View {
         guard let dispatchStatus else {
             return .secondary
         }
+        if dispatchStatus.effectiveRuleCount == 0 {
+            return .secondary
+        }
         return dispatchStatus.updateAvailable ? .orange : .green
+    }
+
+    private var patchStateDetail: String {
+        guard dispatchEnabled else {
+            return "Patch dispatch is disabled for this bottle."
+        }
+        guard let dispatchStatus else {
+            return loading
+                ? "Checking remote, bundled, and local override patch metadata..."
+                : "No patch status has been loaded yet."
+        }
+        if dispatchStatus.effectiveRuleCount == 0 {
+            return "No effective rules matched this bottle, so applying patches would be a no-op."
+        }
+        if dispatchStatus.updateAvailable {
+            return "A newer effective patch set is available for this bottle."
+        }
+        if dispatchStatus.alreadyApplied {
+            return "The effective patch set already matches the last applied digest."
+        }
+        return "No remote or local patch changes are pending for this bottle."
+    }
+
+    private var applyButtonTitle: String {
+        if updateAvailable {
+            return "Apply to Bottle"
+        }
+        if dispatchStatus?.alreadyApplied == true {
+            return "Already Applied"
+        }
+        return "No-op"
+    }
+
+    private var applyDisabledReason: String {
+        guard dispatchEnabled else {
+            return "Enable patch dispatch before applying rules."
+        }
+        guard let dispatchStatus else {
+            return "Check latest metadata before applying rules."
+        }
+        if dispatchStatus.effectiveRuleCount == 0 {
+            return "No effective rules matched this bottle."
+        }
+        if dispatchStatus.alreadyApplied {
+            return "The current patch set is already applied."
+        }
+        if !dispatchStatus.updateAvailable {
+            return "No patch changes are pending."
+        }
+        return ""
     }
 
     var body: some View {
@@ -260,6 +345,9 @@ struct PatchCenterView: View {
                                 .font(.system(size: 12))
                                 .foregroundStyle(VectorPanelTokens.subtleText)
                         }
+                        Text(patchStateDetail)
+                            .font(.system(size: 12))
+                            .foregroundStyle(VectorPanelTokens.subtleText)
                         if let dispatchStatus, dispatchStatus.recommendedBackend != nil {
                             HStack(spacing: 8) {
                                 Text("Effective backend:")
@@ -273,6 +361,25 @@ struct PatchCenterView: View {
                                         .font(.system(size: 12))
                                         .foregroundStyle(VectorPanelTokens.subtleText)
                                 }
+                            }
+                        }
+                        if let dispatchStatus {
+                            HStack(spacing: 8) {
+                                PatchStatePill(
+                                    title: "Effective",
+                                    value: "\(dispatchStatus.effectiveRuleCount) rule(s)",
+                                    tint: dispatchStatus.effectiveRuleCount > 0 ? .mint : .secondary
+                                )
+                                PatchStatePill(
+                                    title: "Last applied",
+                                    value: formattedDate(dispatchStatus.lastAppliedAt),
+                                    tint: dispatchStatus.alreadyApplied ? .green : .secondary
+                                )
+                                PatchStatePill(
+                                    title: "Remote fetched",
+                                    value: formattedDate(dispatchStatus.lastFetchedAt),
+                                    tint: dispatchStatus.lastFetchedAt == nil ? .secondary : .blue
+                                )
                             }
                         }
                         if loading || syncing {
@@ -352,7 +459,7 @@ struct PatchCenterView: View {
                             .buttonStyle(VectorPrimaryPanelButtonStyle())
                             .disabled(loading || syncing)
 
-                            Button("Apply to Bottle") {
+                            Button(applyButtonTitle) {
                                 applyPatchUpdate()
                             }
                             .buttonStyle(VectorPrimaryPanelButtonStyle())
@@ -360,6 +467,11 @@ struct PatchCenterView: View {
                         }
                         if dispatchStatus == nil && !loading {
                             Text("No patch metadata yet. Use Check Latest.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(VectorPanelTokens.subtleText)
+                        }
+                        if !applyDisabledReason.isEmpty && dispatchStatus != nil {
+                            Text(applyDisabledReason)
                                 .font(.system(size: 12))
                                 .foregroundStyle(VectorPanelTokens.subtleText)
                         }

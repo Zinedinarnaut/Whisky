@@ -4,9 +4,9 @@ import { DatabaseZap, ShieldAlert, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { CompatibilityExplorer } from "@/components/site/compatibility-explorer";
 import { CompatibilityReportForm } from "@/components/site/compatibility-report-form";
 import { getCompatibilityDatabase, formatDate } from "@/lib/vecpatch";
+import { CompatibilityExplorer } from "./compatibility-explorer";
 
 export const revalidate = 120;
 
@@ -21,6 +21,9 @@ export default async function CompatibilityPage() {
   const working = entries.filter((entry) => entry.status === "Working").length;
   const playable = entries.filter((entry) => entry.status === "Playable").length;
   const blocked = entries.filter((entry) => entry.status === "Blocked").length;
+  const localProfiles = entries.filter((entry) => entry.hasLocalProfile).length;
+  const remoteRules = entries.filter((entry) => entry.hasRemoteVecPatchRule).length;
+  const dependencyRepairs = entries.filter((entry) => entry.hasDependencyRepairs).length;
 
   return (
     <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
@@ -33,7 +36,9 @@ export default async function CompatibilityPage() {
             Game status without the forum archaeology.
           </h1>
           <p className="mt-5 text-lg leading-8 text-muted-foreground">
-            This page is generated from live VecPatch rules, then layered with a tiny human-readable status map so the database stays useful instead of turning into raw launch arguments.
+            This page merges live VecPatch rules with the local known-game matrix. It separates
+            local profiles, remote rules, and dependency repairs so metadata does not become a
+            fake support claim.
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
             {[
@@ -63,20 +68,22 @@ export default async function CompatibilityPage() {
           <DatabaseZap className="size-5 text-[var(--vector-aqua)]" />
           <h2 className="mt-5 font-semibold text-white">Backed by VecPatch</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Rule count, backend preference, risk level, and trust class are pulled from <code className="text-white">/api/v1/patches</code>.
+            {remoteRules} entries expose a remote rule. Backend preference, risk level, and trust class are pulled from <code className="text-white">/api/v1/patches</code> when available.
           </p>
         </Card>
         <Card className="border-white/10 bg-white/[0.035] p-5">
           <Sparkles className="size-5 text-[var(--vector-signal)]" />
-          <h2 className="mt-5 font-semibold text-white">Consumer readable</h2>
+          <h2 className="mt-5 font-semibold text-white">Local profile aware</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            The public table avoids dumping every override. It focuses on status, compatibility level, backend, and the one note that matters.
+            {localProfiles} entries have a local Vector profile, and {dependencyRepairs} expose dedicated repair guidance instead of burying it in notes.
           </p>
         </Card>
         <Card className="border-white/10 bg-white/[0.035] p-5">
           <ShieldAlert className="size-5 text-[var(--vector-warning)]" />
-          <h2 className="mt-5 font-semibold text-white">Last generated</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{formatDate(compatibility.generatedAt)}</p>
+          <h2 className="mt-5 font-semibold text-white">Protected titles stay blocked</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {blocked} protected or blocked entries require official support before local play. Last generated: {formatDate(compatibility.generatedAt)}.
+          </p>
           <Button variant="outline" className="mt-5 border-white/15 bg-black/20 text-white hover:bg-white/[0.08]" asChild>
             <Link href="/vecpatch">Inspect patch rules</Link>
           </Button>
