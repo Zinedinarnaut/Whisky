@@ -25,10 +25,12 @@ import VectorKit
 struct VectorApp: App {
     @State var showSetup: Bool = false
     @State private var whatsNew: WhatsNew?
-    @AppStorage("vector.whatsnew.2026.04") private var hasShownWhatsNewSheet = false
+    @AppStorage("vector.whatsnew.lastPresentedIdentifier") private var lastPresentedWhatsNewIdentifier = ""
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.openURL) var openURL
     private let updaterController: SPUStandardUpdaterController
+
+    private static let whatsNewRevision = "2026.05.automatic-dependency-repair"
 
     private static let latestWhatsNew = WhatsNew(
         title: "What's New in Vector",
@@ -73,9 +75,10 @@ struct VectorApp: App {
                         await VectorApp.deleteOldLogs()
                     }
 
-                    if !hasShownWhatsNewSheet {
+                    let currentIdentifier = VectorApp.currentWhatsNewIdentifier
+                    if lastPresentedWhatsNewIdentifier != currentIdentifier {
                         whatsNew = VectorApp.latestWhatsNew
-                        hasShownWhatsNewSheet = true
+                        lastPresentedWhatsNewIdentifier = currentIdentifier
                     }
                 }
         }
@@ -179,6 +182,13 @@ struct VectorApp: App {
 
     static func openLogsFolder() {
         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: Wine.logsFolder.path)
+    }
+
+    private static var currentWhatsNewIdentifier: String {
+        let infoDictionary = Bundle.main.infoDictionary
+        let version = infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+        let build = infoDictionary?["CFBundleVersion"] as? String ?? "local"
+        return "\(version)-\(build)-\(whatsNewRevision)"
     }
 
     static func deleteOldLogs() {
