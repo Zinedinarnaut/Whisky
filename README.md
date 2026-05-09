@@ -145,6 +145,17 @@ Run linting:
 swiftlint
 ```
 
+Validate a built `Vector.app` before publishing or packaging:
+
+```bash
+scripts/validate_vector_app_architectures.sh \
+  build/DerivedData/Build/Products/Release/Vector.app
+```
+
+This check walks the app bundle and fails if any Mach-O component still carries
+an `x86_64` slice or is missing an `arm64`/`arm64e` slice, preventing Apple
+Silicon support warnings from regressing in release artefacts.
+
 ## Runtime Patchsets
 
 Dry-run Vector-owned runtime patchsets against a Wine source tree:

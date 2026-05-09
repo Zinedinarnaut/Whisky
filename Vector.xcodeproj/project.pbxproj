@@ -428,6 +428,7 @@
 				6E50D98129CD0EAF008C39F6 /* SwiftLint */,
 				6E95F66C2AB3EF2F00D585D1 /* Embed VectorCmd */,
 				6EFDF65A2AAE2DA800EF622F /* Embed Foundation Extensions */,
+				6EAA00012D10000100000001 /* Thin Apple Silicon Bundle */,
 			);
 			buildRules = (
 			);
@@ -610,6 +611,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "export PATH=\"$PATH:/opt/homebrew/bin\"\nif which swiftlint > /dev/null; then\n    echo \"Running SwiftLint\"\n    swiftlint --strict\nelif [ \"$CI\" = \"true\" ]; then\n    echo \"error: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\n    exit 1\nelse\n    echo \"warning: SwiftLint not installed; skipping local lint\"\nfi\n";
+		};
+		6EAA00012D10000100000001 /* Thin Apple Silicon Bundle */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)",
+			);
+			name = "Thin Apple Silicon Bundle";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/thin_apple_silicon_bundle.sh\" \"$TARGET_BUILD_DIR/$WRAPPER_NAME\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
