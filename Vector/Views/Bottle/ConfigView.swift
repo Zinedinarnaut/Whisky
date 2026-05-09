@@ -111,6 +111,8 @@ struct ConfigView: View {
     @State private var vectorDoctorFixInFlight: VectorDoctorFixID?
     @State private var missingDependencyFixes: [MissingDependencyFix] = []
     @State private var environmentRepairInFlight: Bool = false
+    @State private var automaticDependencyRepairAttemptedSignature: String = ""
+    @State private var automaticDependencyRepairFailureSignature: String = ""
     @State private var dlssHealthModalPresented: Bool = false
     @State private var dlssHealthLoading: Bool = false
     @State private var dlssHealthReport = DLSSRuntimeHealthReport.empty
@@ -128,7 +130,6 @@ struct ConfigView: View {
     @AppStorage("profilesSectionExpanded") private var profilesSectionExpanded: Bool = false
     @AppStorage("snapshotsSectionExpanded") private var snapshotsSectionExpanded: Bool = false
     @AppStorage("presetsSectionExpanded") private var presetsSectionExpanded: Bool = false
-    @AppStorage("dependencySectionExpanded") private var dependencySectionExpanded: Bool = true
     @AppStorage("launchDoctorUseAppleIntelligence") private var launchDoctorUseAppleIntelligence: Bool = true
 
     private var protectedAssessment: ProtectedLaunchAssessment? {
@@ -143,51 +144,6 @@ struct ConfigView: View {
                 Text(selectedConfigCategory.subtitle)
             }
 
-            if selectedConfigCategory == .essentials, !missingDependencyFixes.isEmpty {
-                Section("Fix Missing Dependencies", isExpanded: $dependencySectionExpanded) {
-                    Text("Detected runtime/dependency issues for this bottle. Apply a one-click fix.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Button("Repair Environment") {
-                            runEnvironmentRepair()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(snapshotInFlight || environmentRepairInFlight)
-                        .help(
-                            "Runs runtime DLL verify+repair and applies recommended dependency fixes for this bottle."
-                        )
-                        Spacer()
-                        if environmentRepairInFlight {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                    }
-
-                    if snapshotInFlight, !snapshotMessage.isEmpty {
-                        Text(snapshotMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    ForEach(missingDependencyFixes) { fix in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(fix.title)
-                                .font(.subheadline.weight(.semibold))
-                            Text(fix.detail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Button(fix.actionTitle) {
-                                applyMissingDependencyFix(fix.id)
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(snapshotInFlight || environmentRepairInFlight)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
             if selectedConfigCategory == .runtime {
             Section("config.title.wine", isExpanded: $wineSectionExpanded) {
                 SettingItemView(title: "config.winVersion", loadingState: winVersionLoadingState) {
@@ -1263,9 +1219,8 @@ struct ConfigView: View {
             applyD3D11GamePreset()
             snapshotMessage = "Launch Doctor: applied D3D11 compatibility defaults."
         case .installCoreDependencies:
-            runWinetricksPreset("dotnet48 vcrun2022 corefonts")
-            snapshotMessage = "Launch Doctor: started dependency repair preset."
-            refreshMissingDependencies()
+            let plan = DependencyRepairPlan(fixIDs: [.dotNet, .visualCpp], includeRuntimeDLLRepair: false)
+            performDependencyRepair(plan, action: "core dependency repair", trackEnvironmentRepair: false)
         case .repairMicrosoftAuthDependencies:
             let plan = DependencyRepairPlan(
                 fixIDs: [.edgeWebView2Auth, .dotNet, .visualCpp],
@@ -1361,18 +1316,48 @@ struct ConfigView: View {
 
     private func refreshMissingDependencies() {
         missingDependencyFixes = MissingDependencyDetector.detect(for: bottle)
+        scheduleAutomaticDependencyRepairIfNeeded()
     }
 
-    private func applyMissingDependencyFix(_ fixID: MissingDependencyFixID) {
+    private func scheduleAutomaticDependencyRepairIfNeeded() {
+        guard !missingDependencyFixes.isEmpty,
+              protectedAssessment?.shouldBlockLocalLaunch != true,
+              !snapshotInFlight,
+              !environmentRepairInFlight else {
+            return
+        }
+
         let plan = DependencyRepairPlan(
-            fixIDs: Set([fixID]),
-            includeRuntimeDLLRepair: fixID.requiresRuntimeMirrorRepair
+            fixIDs: Set(missingDependencyFixes.map(\.id)),
+            includeRuntimeDLLRepair: true
         )
+        guard plan.hasAutomaticWork else {
+            return
+        }
+
+        let signature = plan.automaticRepairSignature
+        guard signature != automaticDependencyRepairAttemptedSignature,
+              signature != automaticDependencyRepairFailureSignature,
+              UserDefaults.standard.string(forKey: automaticDependencyRepairCompletionKey) != signature else {
+            return
+        }
+
+        automaticDependencyRepairAttemptedSignature = signature
         performDependencyRepair(
             plan,
-            action: fixID.repairActionDescription,
-            trackEnvironmentRepair: false
+            action: "automatic dependency repair",
+            trackEnvironmentRepair: true,
+            automaticRepairSignature: signature
         )
+    }
+
+    private var automaticDependencyRepairCompletionKey: String {
+        let encodedPath = Data(bottle.url.path(percentEncoded: false).utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "=", with: "")
+        return "vector.automaticDependencyRepair.completed.\(encodedPath)"
     }
 
     private func repairMinecraftDungeonsSignInFlow() {
@@ -2085,7 +2070,8 @@ struct ConfigView: View {
         _ plan: DependencyRepairPlan,
         action: String,
         trackEnvironmentRepair: Bool,
-        vectorDoctorFixID: VectorDoctorFixID? = nil
+        vectorDoctorFixID: VectorDoctorFixID? = nil,
+        automaticRepairSignature: String? = nil
     ) {
         guard !plan.isEmpty else {
             snapshotMessage = "No missing dependency repairs were needed."
@@ -2115,6 +2101,7 @@ struct ConfigView: View {
             await publish("creating safety snapshot if enabled")
             let snapshotNote = await Self.createAutoSnapshotIfEnabled(for: targetBottle, action: action)
             var repairNotes: [String] = []
+            var repairHadFailure = false
 
             if plan.repairRuntimeDLLMirror {
                 await publish("validating runtime DLL mirror")
@@ -2122,6 +2109,7 @@ struct ConfigView: View {
                     try Wine.repairRuntimeSystemDLLMirror(for: targetBottle)
                     repairNotes.append("validated the runtime DLL mirror")
                 } catch {
+                    repairHadFailure = true
                     repairNotes.append("runtime DLL validation failed: \(error.localizedDescription)")
                 }
             }
@@ -2132,6 +2120,7 @@ struct ConfigView: View {
                     try Wine.enableDXVK(bottle: targetBottle)
                     repairNotes.append("reinstalled the DXVK DLL payload")
                 } catch {
+                    repairHadFailure = true
                     repairNotes.append("DXVK payload repair failed: \(error.localizedDescription)")
                 }
             }
@@ -2142,6 +2131,7 @@ struct ConfigView: View {
                     try await Wine.enableDXMT(bottle: targetBottle)
                     repairNotes.append("validated the DXMT payload")
                 } catch {
+                    repairHadFailure = true
                     repairNotes.append("DXMT payload repair failed: \(error.localizedDescription)")
                 }
             }
@@ -2161,6 +2151,7 @@ struct ConfigView: View {
                     }
                     repairNotes.append("validated the DLSS translation runtime")
                 } catch {
+                    repairHadFailure = true
                     repairNotes.append("DLSS translation repair failed: \(error.localizedDescription)")
                 }
             }
@@ -2221,14 +2212,23 @@ struct ConfigView: View {
                     }
                     repairNotes.append(result.note)
                 } catch {
+                    repairHadFailure = true
                     repairNotes.append("WebView2 automatic install failed: \(error.localizedDescription)")
                 }
             }
 
             if let winetricksCommand = plan.winetricksCommand {
                 await publish("running Winetricks: \(winetricksCommand)")
-                await Winetricks.runCommand(command: winetricksCommand, bottle: targetBottle)
-                repairNotes.append("started Winetricks repair: \(winetricksCommand)")
+                do {
+                    let result = try await Winetricks.runCommandSilently(
+                        command: winetricksCommand,
+                        bottle: targetBottle
+                    )
+                    repairNotes.append("completed Winetricks repair: \(result.command)")
+                } catch {
+                    repairHadFailure = true
+                    repairNotes.append("Winetricks repair failed: \(error.localizedDescription)")
+                }
             }
 
             repairNotes.append(contentsOf: plan.manualRepairNotes)
@@ -2237,6 +2237,16 @@ struct ConfigView: View {
                 refreshMissingDependencies()
                 if dlssHealthModalPresented {
                     refreshDLSSRuntimeHealth()
+                }
+                if let automaticRepairSignature {
+                    if repairHadFailure {
+                        automaticDependencyRepairFailureSignature = automaticRepairSignature
+                    } else {
+                        UserDefaults.standard.set(
+                            automaticRepairSignature,
+                            forKey: automaticDependencyRepairCompletionKey
+                        )
+                    }
                 }
 
                 let details = repairNotes.joined(separator: ". ")
@@ -2544,10 +2554,19 @@ struct ConfigView: View {
         snapshotInFlight = true
         Task.detached(priority: .userInitiated) {
             let snapshotNote = await Self.createAutoSnapshotIfEnabled(for: targetBottle, action: "Winetricks preset")
-            await Winetricks.runCommand(command: command, bottle: targetBottle)
-            await MainActor.run {
-                snapshotMessage = "\(snapshotNote)Started Winetricks preset: \(command)"
-                snapshotInFlight = false
+            do {
+                let result = try await Winetricks.runCommandSilently(command: command, bottle: targetBottle)
+                await MainActor.run {
+                    snapshotMessage = "\(snapshotNote)Completed Winetricks preset: \(result.command)"
+                    snapshotInFlight = false
+                    refreshMissingDependencies()
+                }
+            } catch {
+                await MainActor.run {
+                    snapshotMessage = "\(snapshotNote)Winetricks preset failed: \(error.localizedDescription)"
+                    snapshotInFlight = false
+                    refreshMissingDependencies()
+                }
             }
         }
     }
@@ -2954,6 +2973,33 @@ private struct DependencyRepairPlan: Sendable {
             && !installEdgeWebView2Runtime
             && winetricksVerbs.isEmpty
             && manualRepairNotes.isEmpty
+    }
+
+    var hasAutomaticWork: Bool {
+        repairRuntimeDLLMirror
+            || enableDXVKPayload
+            || enableDXMTPayload
+            || enableDLSSRuntimeTranslation
+            || enableMediaPlaybackCompatibility
+            || resetMinecraftAuthCaches
+            || resetSteamWebHelperFallback
+            || installEdgeWebView2Runtime
+            || !winetricksVerbs.isEmpty
+    }
+
+    var automaticRepairSignature: String {
+        [
+            fixIDs.map(\.rawValue).sorted().joined(separator: ","),
+            "runtime:\(repairRuntimeDLLMirror)",
+            "dxvk:\(enableDXVKPayload)",
+            "dxmt:\(enableDXMTPayload)",
+            "dlss:\(enableDLSSRuntimeTranslation)",
+            "media:\(enableMediaPlaybackCompatibility)",
+            "minecraftAuth:\(resetMinecraftAuthCaches)",
+            "steamCEF:\(resetSteamWebHelperFallback)",
+            "webview2:\(installEdgeWebView2Runtime)",
+            "winetricks:\(winetricksVerbs.joined(separator: ","))"
+        ].joined(separator: "|")
     }
 
     var winetricksCommand: String? {

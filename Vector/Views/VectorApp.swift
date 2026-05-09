@@ -40,10 +40,9 @@ struct VectorApp: App {
             ),
             .init(
                 image: .init(systemName: "shippingbox.fill", foregroundColor: .orange),
-                title: "Dependency Health Prompts",
+                title: "Automatic Dependency Repair",
                 subtitle: .init(
-                    "Install Missing Dependencies appears only when launch logs or backend checks "
-                        + "detect a real issue."
+                    "Vector now preflights bottle runtime issues and runs supported repairs automatically."
                 )
             ),
             .init(
