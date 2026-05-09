@@ -1074,27 +1074,7 @@ public enum BottleGamingModeManager {
                     "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
                     "DXVK_ENABLE_NVAPI": "0",
                     "PROTON_ENABLE_NVAPI": "0",
-                    "VECTOR_PROTON_STYLE_COMPAT": "1",
-                    "VECTOR_PROTON_MEDIA_SHIMS": "1",
-                    "VECTOR_MEDIA_FOUNDATION_MODE": "proton-style"
-                ],
-                graphicsBackendOverride: .dxvk,
-                fallbackGraphicsBackend: .wined3d
-            ),
-            BottleGameProfile(
-                name: "Auto: Minecraft Dungeons Launcher",
-                executableMatch: "dungeons.exe",
-                steamAppID: "1672970",
-                arguments:
-                    "-force-d3d11 -dx11 -d3d11 -cef-disable-gpu -cef-disable-gpu-compositing "
-                    + "-cef-disable-accelerated-video-decode -cef-disable-low-latency-dxva "
-                    + "-cef-disable-zero-copy-dxgi-video -nosound",
-                environment: [
-                    "WINEDLLOVERRIDES": "dxgi,d3d11,d3d10core,d3d9=n,b;nvapi,nvapi64=d",
-                    "SteamNoOverlayUIDrawing": "1",
-                    "DISABLE_VK_LAYER_VALVE_steam_overlay": "1",
-                    "DXVK_ENABLE_NVAPI": "0",
-                    "PROTON_ENABLE_NVAPI": "0",
+                    "DXVK_ASYNC": "1",
                     "VECTOR_PROTON_STYLE_COMPAT": "1",
                     "VECTOR_PROTON_MEDIA_SHIMS": "1",
                     "VECTOR_MEDIA_FOUNDATION_MODE": "proton-style"
@@ -1417,7 +1397,7 @@ public enum BottleGamingModeManager {
         var rebuilt: [BottleGameProfile] = []
 
         for existing in profiles {
-            guard isManagedProfile(existing),
+            guard isBuiltInManagedProfile(existing),
                   profilesMatchForManagedUpsert(existing, profile) else {
                 rebuilt.append(existing)
                 continue
@@ -1452,9 +1432,9 @@ public enum BottleGamingModeManager {
         return "\(name)|\(executable)|\(appID)"
     }
 
-    private static func isManagedProfile(_ profile: BottleGameProfile) -> Bool {
+    private static func isBuiltInManagedProfile(_ profile: BottleGameProfile) -> Bool {
         let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.hasPrefix("Auto:") || name.hasPrefix(dispatchProfileNamePrefix)
+        return name.hasPrefix("Auto:")
     }
 
     private static func profilesMatchForManagedUpsert(
@@ -1470,9 +1450,14 @@ public enum BottleGamingModeManager {
         let incomingAppID = incoming.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
         let existingAppID = existing.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return !incomingExecutable.isEmpty
-            && !incomingAppID.isEmpty
-            && existingExecutable.caseInsensitiveCompare(incomingExecutable) == .orderedSame
+        if !incomingExecutable.isEmpty,
+           !existingExecutable.isEmpty,
+           existingExecutable.caseInsensitiveCompare(incomingExecutable) == .orderedSame {
+            return true
+        }
+
+        return !incomingAppID.isEmpty
+            && !existingAppID.isEmpty
             && existingAppID == incomingAppID
     }
 
@@ -1583,24 +1568,6 @@ public enum BottleGamingModeManager {
     }
 
     private static func updateInferredBackend(using rules: [DispatchPatchRule], for bottle: Bottle) async {
-        let fallbackRecommendation = await MainActor.run {
-            guard bottle.settings.graphicsBackendMode == .auto else {
-                bottle.settings.inferredGraphicsBackendMode = nil
-                bottle.settings.inferredFallbackGraphicsBackendMode = nil
-                return nil as (primary: GraphicsBackendMode, fallback: GraphicsBackendMode?)?
-            }
-
-            return preferredBackendRecommendation(from: rules, in: bottle)
-        }
-        guard await MainActor.run(body: { bottle.settings.graphicsBackendMode == .auto }) else {
-            return
-        }
-
-        let recommendation = await DispatchBackendInferenceService.shared.recommendBackend(
-            for: bottle,
-            rules: rules,
-            fallback: fallbackRecommendation
-        )
         await MainActor.run {
             guard bottle.settings.graphicsBackendMode == .auto else {
                 bottle.settings.inferredGraphicsBackendMode = nil
@@ -1608,6 +1575,7 @@ public enum BottleGamingModeManager {
                 return
             }
 
+            let recommendation = VectorGraphicsBackendPolicy.recommendation(for: bottle, rules: rules)
             bottle.settings.inferredGraphicsBackendMode = recommendation?.primary
             bottle.settings.inferredFallbackGraphicsBackendMode = recommendation?.fallback
         }

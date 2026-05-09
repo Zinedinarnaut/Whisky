@@ -20,6 +20,7 @@ import XCTest
 @testable import VectorKit
 
 // The patch/profile matrix is intentionally broad because it guards idempotence across many games.
+// swiftlint:disable file_length
 // swiftlint:disable:next type_body_length
 final class BottleGamingModeTests: XCTestCase {
     private struct ExpectedProfile {
@@ -67,6 +68,12 @@ final class BottleGamingModeTests: XCTestCase {
             backend: .dxvk
         ),
         ExpectedProfile(
+            name: "Auto: EA App",
+            executable: "eadesktop.exe",
+            appID: "",
+            backend: .dxvk
+        ),
+        ExpectedProfile(
             name: "Auto: Lethal Company",
             executable: "lethal company.exe",
             appID: "1966720",
@@ -111,11 +118,19 @@ final class BottleGamingModeTests: XCTestCase {
                 "Missing managed profile \(expected.name)"
             )
             XCTAssertEqual(profile.executableMatch, expected.executable)
-            XCTAssertEqual(profile.steamAppID, expected.appID)
+            if !expected.appID.isEmpty {
+                XCTAssertEqual(profile.steamAppID, expected.appID)
+            }
             XCTAssertEqual(profile.graphicsBackendOverride, expected.backend)
             XCTAssertEqual(profile.environment["DXVK_ENABLE_NVAPI"], "0")
             XCTAssertFalse(profile.environment["WINEDLLOVERRIDES", default: ""].isEmpty)
         }
+
+        let minecraftProfiles = firstProfiles.filter {
+            $0.name.hasPrefix("Auto: Minecraft Dungeons") || $0.steamAppID == "1672970"
+        }
+        XCTAssertEqual(minecraftProfiles.count, 1)
+        XCTAssertEqual(minecraftProfiles.first?.environment["DXVK_ASYNC"], "1")
 
         BottleGamingModeManager.ensureKnownGameProfiles(in: bottle)
         XCTAssertEqual(bottle.settings.gameProfiles.count, firstProfiles.count)
@@ -183,6 +198,71 @@ final class BottleGamingModeTests: XCTestCase {
         XCTAssertEqual(managedProfiles.first?.environment["DXVK_ENABLE_NVAPI"], "0")
         XCTAssertNil(managedProfiles.first?.environment["OLD_PROFILE"])
         XCTAssertNil(managedProfiles.first?.environment["OLDER_PROFILE"])
+    }
+
+    // swiftlint:disable:next function_body_length
+    func testKnownGameProfilesCollapseManagedDuplicatesByExecutableOrSteamAppID() throws {
+        let bottle = try makeBottle()
+        let exeOnlyManagedProfile = BottleGameProfile(
+            name: "Auto: Lethal Company Legacy Exe",
+            executableMatch: "lethal company.exe",
+            arguments: "-old-exe",
+            environment: ["OLD_EXE_PROFILE": "1"]
+        )
+        let steamOnlyManagedProfile = BottleGameProfile(
+            name: "Auto: Lethal Company Steam",
+            steamAppID: "1966720",
+            arguments: "-old-steam",
+            environment: ["OLD_STEAM_PROFILE": "1"]
+        )
+        let contentWarningSteamOnlyProfile = BottleGameProfile(
+            name: "Auto: Content Warning Steam",
+            steamAppID: "2881650",
+            arguments: "-old-content-warning",
+            environment: ["OLD_CONTENT_WARNING_PROFILE": "1"]
+        )
+        let dispatchProfile = BottleGameProfile(
+            name: "Dispatch: Lethal Company Remote",
+            executableMatch: "lethal company.exe",
+            steamAppID: "1966720",
+            arguments: "-dispatch",
+            environment: ["DISPATCH_PROFILE": "1"],
+            dispatchRuleID: "remote-lethal-company"
+        )
+        bottle.settings.gameProfiles = [
+            exeOnlyManagedProfile,
+            steamOnlyManagedProfile,
+            contentWarningSteamOnlyProfile,
+            dispatchProfile
+        ]
+
+        BottleGamingModeManager.ensureKnownGameProfiles(in: bottle)
+
+        let lethalManagedProfiles = bottle.settings.gameProfiles.filter {
+            $0.name.hasPrefix("Auto:")
+                && ($0.executableMatch == "lethal company.exe" || $0.steamAppID == "1966720")
+        }
+        XCTAssertEqual(lethalManagedProfiles.count, 1)
+        XCTAssertEqual(lethalManagedProfiles.first?.id, exeOnlyManagedProfile.id)
+        XCTAssertEqual(lethalManagedProfiles.first?.name, "Auto: Lethal Company")
+        XCTAssertEqual(lethalManagedProfiles.first?.arguments, "-force-d3d11")
+        XCTAssertNil(lethalManagedProfiles.first?.environment["OLD_EXE_PROFILE"])
+        XCTAssertNil(lethalManagedProfiles.first?.environment["OLD_STEAM_PROFILE"])
+
+        let contentWarningProfiles = bottle.settings.gameProfiles.filter {
+            $0.name.hasPrefix("Auto:")
+                && ($0.executableMatch == "content warning.exe" || $0.steamAppID == "2881650")
+        }
+        XCTAssertEqual(contentWarningProfiles.count, 1)
+        XCTAssertEqual(contentWarningProfiles.first?.id, contentWarningSteamOnlyProfile.id)
+        XCTAssertEqual(contentWarningProfiles.first?.name, "Auto: Content Warning")
+
+        let dispatchProfiles = bottle.settings.gameProfiles.filter {
+            $0.name.hasPrefix(BottleGamingModeManager.dispatchProfileNamePrefix)
+        }
+        XCTAssertEqual(dispatchProfiles.count, 1)
+        XCTAssertEqual(dispatchProfiles.first?.id, dispatchProfile.id)
+        XCTAssertEqual(dispatchProfiles.first?.environment["DISPATCH_PROFILE"], "1")
     }
 
     func testDispatchRulesDoNotReapplyWhenDigestIsAlreadyApplied() {

@@ -19,6 +19,7 @@
 import XCTest
 @testable import VectorKit
 
+// swiftlint:disable type_body_length
 final class VectorDoctorDependencyRepairTests: XCTestCase {
     func testMicrosoftAuthLoopFlagsRepairableAndManualXboxSignals() throws {
         let bottle = try makeBottle()
@@ -88,6 +89,96 @@ final class VectorDoctorDependencyRepairTests: XCTestCase {
         XCTAssertTrue(signals.needsRuntimeDependencyRepair)
         XCTAssertTrue(signals.needsLauncherDependencyRepair)
         XCTAssertTrue(signals.launcherDetails.contains("Visual C++"))
+    }
+
+    func testEAAppWebView2FailureRecommendsConcreteLauncherRepair() throws {
+        let bottle = try makeBottle()
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: [
+                log("EADesktop.exe failed CreateCoreWebView2EnvironmentWithOptions: WebView2Loader.dll missing")
+            ]
+        )
+        let fixes = VectorDoctor.recommendedFixes(from: signals, protectedAssessment: nil)
+        let launcherFix = try XCTUnwrap(fixes.first { $0.id == .repairLauncherDependencies })
+
+        XCTAssertTrue(signals.needsLauncherDependencyRepair)
+        XCTAssertTrue(signals.needsRuntimeDependencyRepair)
+        XCTAssertTrue(signals.launcherDetails.contains("EA App/EADesktop"))
+        XCTAssertTrue(signals.launcherDetails.contains("WebView2 runtime repair required"))
+        XCTAssertTrue(launcherFix.detail.contains("WebView2"))
+    }
+
+    func testEpicPrerequisiteFailureNamesVisualCppAndDirectXRepair() throws {
+        let bottle = try makeBottle()
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: [
+                log("EpicGamesLauncher.exe PrereqSetup failed loading api-ms-win-crt-runtime-l1-1-0.dll")
+            ]
+        )
+
+        XCTAssertTrue(signals.needsLauncherDependencyRepair)
+        XCTAssertTrue(signals.launcherDetails.contains("Epic Games Launcher prerequisite"))
+        XCTAssertTrue(signals.launcherDetails.contains("Visual C++/UCRT repair required"))
+        XCTAssertTrue(signals.launcherDetails.contains("DirectX helper DLLs"))
+    }
+
+    func testUbisoftConnectFailureNamesQtWebRuntimeAndVCRedistRepair() throws {
+        let bottle = try makeBottle()
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: [
+                log("UbisoftConnect.exe started UplayWebCore.exe then failed to load msvcp140.dll")
+            ]
+        )
+
+        XCTAssertTrue(signals.needsLauncherDependencyRepair)
+        XCTAssertTrue(signals.launcherDetails.contains("Ubisoft Connect startup fault"))
+        XCTAssertTrue(signals.launcherDetails.contains("WebView2/Qt web runtime support"))
+        XCTAssertTrue(signals.launcherDetails.contains("Visual C++/UCRT repair required"))
+    }
+
+    func testMediaFoundationFailureUsesConcreteRepairDetail() throws {
+        let bottle = try makeBottle()
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: [
+                log("Failed to initialize video: mfplat.dll and winegstreamer could not create decoder")
+            ]
+        )
+        let fixes = VectorDoctor.recommendedFixes(from: signals, protectedAssessment: nil)
+        let mediaFix = try XCTUnwrap(fixes.first { $0.id == .repairMediaPlayback })
+
+        XCTAssertTrue(signals.needsMediaRepair)
+        XCTAssertTrue(signals.mediaDetails.contains("Media Foundation repair required"))
+        XCTAssertTrue(signals.mediaDetails.contains("WineGStreamer repair required"))
+        XCTAssertTrue(mediaFix.detail.contains("Media Foundation repair required"))
+    }
+
+    func testWineserverVersionMismatchRecommendsReset() throws {
+        let bottle = try makeBottle()
+        let signals = VectorDoctor.repairSignals(
+            for: bottle,
+            runtime: healthyRuntime(),
+            dispatch: cleanDispatch(),
+            logs: [
+                log("wine client error: wineserver version mismatch; wrong wineserver is still running")
+            ]
+        )
+        let fixes = VectorDoctor.recommendedFixes(from: signals, protectedAssessment: nil)
+        let wineserverFix = try XCTUnwrap(fixes.first { $0.id == .killMismatchedWineserver })
+
+        XCTAssertTrue(signals.needsWineserverReset)
+        XCTAssertTrue(wineserverFix.detail.contains("version mismatch"))
     }
 
     func testRemoteMediaRepairSignalMarksMediaRepairWithoutLogFault() throws {
@@ -226,3 +317,4 @@ final class VectorDoctorDependencyRepairTests: XCTestCase {
         )
     }
 }
+// swiftlint:enable type_body_length

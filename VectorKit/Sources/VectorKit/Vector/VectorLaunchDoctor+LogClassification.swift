@@ -81,7 +81,12 @@ private extension VectorLaunchDoctor {
             title: "Wine/wineserver mismatch",
             detail: "Recent logs show mixed Wine runtime binaries. Kill stale wineservers before retrying.",
             failureClass: .wineserverMismatch,
-            needles: ["version mismatch", "wrong wineserver is still running"]
+            needles: [
+                "version mismatch",
+                "wrong wineserver is still running",
+                "wineserver version mismatch",
+                "wine client error"
+            ]
         ),
         VectorLaunchDoctorLogRule(
             id: "log-runtime-dependency",
@@ -89,7 +94,51 @@ private extension VectorLaunchDoctor {
             title: "Runtime dependency fault",
             detail: "Recent logs mention .NET, Visual C++, or WebView runtime components.",
             failureClass: .missingRuntimeDependency,
-            needles: ["mscoree.dll", "vcruntime", "msvcp", "edgewebview"]
+            needles: [
+                "mscoree.dll",
+                ".net desktop runtime",
+                "vcruntime",
+                "msvcp",
+                "ucrtbase.dll",
+                "api-ms-win-crt",
+                "edgewebview",
+                "webview2loader.dll",
+                "createcorewebview2environment"
+            ]
+        ),
+        VectorLaunchDoctorLogRule(
+            id: "log-ea-launcher-dependencies",
+            severity: .warning,
+            title: "EA App dependency fault",
+            detail: "Recent logs point at EADesktop/EA App startup. Repair WebView2, .NET, Visual C++/UCRT, and fonts.",
+            failureClass: .missingRuntimeDependency,
+            needles: ["eadesktop.exe", "ea app", "ealauncher.exe", "eabackgroundservice.exe", "eacoreserver.exe"]
+        ),
+        VectorLaunchDoctorLogRule(
+            id: "log-epic-launcher-dependencies",
+            severity: .warning,
+            title: "Epic Launcher prerequisite fault",
+            detail: "Recent logs point at Epic launcher prerequisites. Repair Visual C++/UCRT, WebView2, "
+                + "DirectX helpers, and fonts.",
+            failureClass: .missingRuntimeDependency,
+            needles: ["epicgameslauncher.exe", "epic games launcher", "ue4 prerequisites", "prereqsetup"]
+        ),
+        VectorLaunchDoctorLogRule(
+            id: "log-ubisoft-launcher-dependencies",
+            severity: .warning,
+            title: "Ubisoft Connect dependency fault",
+            detail: "Recent logs point at Ubisoft Connect startup. Repair Visual C++/UCRT, "
+                + "WebView2/Qt web runtime support, and fonts.",
+            failureClass: .missingRuntimeDependency,
+            needles: ["ubisoftconnect.exe", "ubisoft connect", "uplaywebcore.exe", "ubisoft game launcher"]
+        ),
+        VectorLaunchDoctorLogRule(
+            id: "log-gog-launcher-dependencies",
+            severity: .warning,
+            title: "GOG Galaxy dependency fault",
+            detail: "Recent logs point at GOG Galaxy startup. Repair WebView2, .NET, Visual C++/UCRT, and fonts.",
+            failureClass: .missingRuntimeDependency,
+            needles: ["galaxyclient.exe", "gog galaxy", "galaxycommunication.exe"]
         ),
         VectorLaunchDoctorLogRule(
             id: "log-webview-auth",
@@ -108,7 +157,17 @@ private extension VectorLaunchDoctor {
             title: "Media playback dependency fault",
             detail: "Recent logs indicate missing or broken Windows media playback plumbing.",
             failureClass: .mediaPlayback,
-            needles: ["mfplat.dll", "winegstreamer", "failed to initialize video", "video playback"]
+            needles: [
+                "media foundation",
+                "mfplat.dll",
+                "mfreadwrite.dll",
+                "winegstreamer",
+                "gstreamer",
+                "quartz.dll",
+                "wmvcore.dll",
+                "failed to initialize video",
+                "video playback"
+            ]
         ),
         VectorLaunchDoctorLogRule(
             id: "log-steam-bootstrap",
@@ -116,7 +175,14 @@ private extension VectorLaunchDoctor {
             title: "Steam bootstrap/UI signal",
             detail: "Recent logs include Steam webhelper/CEF signals; use Steam safe UI mode if blank.",
             failureClass: .steamBootstrap,
-            needles: ["steamwebhelper", "cef", "htmlcache"]
+            needles: [
+                "steamwebhelper",
+                "steamwebhelper.exe",
+                "steam cef",
+                "htmlcache",
+                "steamwebhelper crashed",
+                "critical steam component"
+            ]
         )
     ]
 

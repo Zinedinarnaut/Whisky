@@ -53,6 +53,9 @@ extension VectorDoctor {
         let hasRuntimeDependencyFault = containsAny(runtimeDependencyFaultNeedles, in: logText)
         let hasSteamWebHelperFault = containsAny(steamWebHelperFaultNeedles, in: logText)
         let hasWineserverMismatch = containsAny(wineserverFaultNeedles, in: logText)
+        let launcherLogSignals = launcherDependencySignals(in: logText)
+        let runtimeComponentSignals = runtimeComponentSignals(in: logText)
+        let mediaLogSignals = mediaDependencySignals(in: logText)
         let normalizedRemoteFixIDs = remoteFixIDs.compactMap(VectorDoctorFixID.init(rawValue:))
         let missingMediaDLLs = missingDLLs(mediaPlaybackDLLs, in: bottle)
         let missingRuntimeDLLs = missingDLLs(runtimeDependencyDLLs, in: bottle)
@@ -71,6 +74,8 @@ extension VectorDoctor {
         let hasRepairableLauncherFault = hasWebViewAuthFault
             || hasRuntimeDependencyFault
             || hasRuntimeDependencyFileSignal
+            || !launcherLogSignals.isEmpty
+            || !runtimeComponentSignals.isEmpty
             || hasLauncherMetadataSignal
         let hasXboxManualFallback = hasWebViewAuthFault && !missingXboxServices.isEmpty
 
@@ -81,7 +86,9 @@ extension VectorDoctor {
             needsMediaRepair: hasMediaLogFault || !missingMediaDLLs.isEmpty || hasMediaMetadataSignal,
             needsLauncherDependencyRepair: hasRepairableLauncherFault,
             needsWebViewAuthRepair: hasWebViewAuthFault,
-            needsRuntimeDependencyRepair: hasRuntimeDependencyFault || hasRuntimeDependencyFileSignal,
+            needsRuntimeDependencyRepair: hasRuntimeDependencyFault
+                || hasRuntimeDependencyFileSignal
+                || !runtimeComponentSignals.isEmpty,
             needsGraphicsPayloadRepair: !graphicsIssues.isEmpty,
             needsSteamWebHelperFallback: hasSteamWebHelperFault,
             needsXboxManualFallback: hasXboxManualFallback,
@@ -89,9 +96,10 @@ extension VectorDoctor {
             mediaDetails: mediaDetails(
                 missingDLLs: missingMediaDLLs,
                 hasMediaLogFault: hasMediaLogFault,
-                hasMediaMetadataSignal: hasMediaMetadataSignal
+                hasMediaMetadataSignal: hasMediaMetadataSignal,
+                mediaLogSignals: mediaLogSignals
             ),
-            launcherDetails: launcherDetails(
+            launcherDetails: launcherDetails(LauncherDetailsInput(
                 missingDLLs: missingRuntimeDLLs,
                 missingDotNetMarkers: missingDotNetMarkers,
                 flags: LauncherDetailFlags(
@@ -99,8 +107,10 @@ extension VectorDoctor {
                     hasRuntimeDependencyFault: hasRuntimeDependencyFault,
                     hasLauncherMetadataSignal: hasLauncherMetadataSignal
                 ),
+                launcherLogSignals: launcherLogSignals,
+                runtimeComponentSignals: runtimeComponentSignals,
                 missingXboxServices: missingXboxServices
-            ),
+            )),
             graphicsDetails: graphicsDetails(issues: graphicsIssues),
             steamDetails: steamDetails(hasFault: hasSteamWebHelperFault)
         )
@@ -129,6 +139,7 @@ extension VectorDoctor {
             appendFix(remoteFixID, to: &fixes, when: true)
         }
         appendFix(.exportDiagnosticBundle, to: &fixes, when: true)
+        enrichRepairDetails(&fixes, with: signals)
 
         return fixes
     }
@@ -139,6 +150,15 @@ private extension VectorDoctor {
         var hasWebViewAuthFault: Bool
         var hasRuntimeDependencyFault: Bool
         var hasLauncherMetadataSignal: Bool
+    }
+
+    struct LauncherDetailsInput {
+        var missingDLLs: [String]
+        var missingDotNetMarkers: [String]
+        var flags: LauncherDetailFlags
+        var launcherLogSignals: [String]
+        var runtimeComponentSignals: [String]
+        var missingXboxServices: [String]
     }
 
     static let mediaPlaybackDLLs = [
@@ -209,6 +229,15 @@ private extension VectorDoctor {
         "video playback"
     ]
 
+    static let webViewRuntimeFaultNeedles = [
+        "webview2loader.dll",
+        "msedgewebview2.exe",
+        "createcorewebview2environment",
+        "corewebview2",
+        "webview2 runtime",
+        "edge webview2 runtime"
+    ]
+
     static let webViewAuthFaultNeedles = [
         "webview2",
         "webview",
@@ -224,6 +253,30 @@ private extension VectorDoctor {
         "xbl_ticket",
         "you have reached a page that is not normally shown",
         "microsoft will never ask you to copy or share this url"
+    ]
+
+    static let dotNetFaultNeedles = [
+        ".net desktop runtime",
+        ".net framework",
+        "dotnet runtime",
+        "clr20r3",
+        "mscoree.dll",
+        "mscorsvw.exe",
+        "fusion.dll"
+    ]
+
+    static let visualCppFaultNeedles = [
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+        "msvcr120.dll",
+        "msvcr110.dll",
+        "concrt140.dll",
+        "ucrtbase.dll",
+        "api-ms-win-crt",
+        "visual c++",
+        "vc_redist",
+        "vc runtime"
     ]
 
     static let runtimeDependencyFaultNeedles = [
@@ -245,15 +298,55 @@ private extension VectorDoctor {
         "steamwebhelper.exe",
         "steam helper",
         "steam cef",
-        "cef",
         "htmlcache",
         "steamwebhelper crashed",
         "steamwebhelper, a critical steam component"
     ]
 
+    static let epicLauncherFaultNeedles = [
+        "epicgameslauncher.exe",
+        "epic games launcher",
+        "launcher/portal",
+        "portal/binaries/win32",
+        "portal/binaries/win64",
+        "ue4 prerequisites",
+        "prereqsetup",
+        "eosoverlayrenderer"
+    ]
+
+    static let eaLauncherFaultNeedles = [
+        "eadesktop.exe",
+        "ea app",
+        "ealauncher.exe",
+        "eabackgroundservice.exe",
+        "eacoreserver.exe",
+        "qtwebengineprocess.exe",
+        "igoproxy64.exe"
+    ]
+
+    static let ubisoftLauncherFaultNeedles = [
+        "ubisoftconnect.exe",
+        "ubisoft connect",
+        "uplay",
+        "upc.exe",
+        "uplaywebcore.exe",
+        "ubisoft game launcher",
+        "qtwebengineprocess.exe"
+    ]
+
+    static let gogLauncherFaultNeedles = [
+        "galaxyclient.exe",
+        "gog galaxy",
+        "galaxyclient helper.exe",
+        "galaxycommunication.exe"
+    ]
+
     static let wineserverFaultNeedles = [
         "version mismatch",
-        "wrong wineserver is still running"
+        "wrong wineserver is still running",
+        "wineserver version mismatch",
+        "wine client error",
+        "waiting for wineserver failed"
     ]
 
     static func appendFix(
@@ -314,13 +407,37 @@ private extension VectorDoctor {
         }
     }
 
+    static func enrichRepairDetails(_ fixes: inout [VectorDoctorFixSuggestion], with signals: RepairSignals) {
+        for index in fixes.indices {
+            switch fixes[index].id {
+            case .killMismatchedWineserver where signals.needsWineserverReset:
+                fixes[index].detail = "Logs show a Wine/wineserver version mismatch. Kill stale wineservers, "
+                    + "then retry with one matched runtime pair."
+            case .repairMediaPlayback where signals.needsMediaRepair:
+                fixes[index].detail = signals.mediaDetails
+            case .repairLauncherDependencies where signals.needsLauncherDependencyRepair:
+                fixes[index].detail = signals.launcherDetails
+            default:
+                continue
+            }
+        }
+    }
+
     static func mediaDetails(
         missingDLLs: [String],
         hasMediaLogFault: Bool,
-        hasMediaMetadataSignal: Bool
+        hasMediaMetadataSignal: Bool,
+        mediaLogSignals: [String]
     ) -> String {
         if missingDLLs.isEmpty, hasMediaMetadataSignal {
             return "Compatibility metadata recommends the media playback repair for this game."
+        }
+        if !mediaLogSignals.isEmpty {
+            var details = mediaLogSignals
+            if hasMediaMetadataSignal {
+                details.append("Compatibility metadata also recommends the media playback repair.")
+            }
+            return details.joined(separator: " ")
         }
         if missingDLLs.isEmpty, hasMediaLogFault {
             return "Recent logs indicate Media Foundation, codec, Quartz, or winegstreamer video faults."
@@ -332,32 +449,30 @@ private extension VectorDoctor {
         return details.joined(separator: " ")
     }
 
-    static func launcherDetails(
-        missingDLLs: [String],
-        missingDotNetMarkers: [String],
-        flags: LauncherDetailFlags,
-        missingXboxServices: [String]
-    ) -> String {
+    static func launcherDetails(_ input: LauncherDetailsInput) -> String {
         var details: [String] = []
-        if flags.hasLauncherMetadataSignal {
+        if input.flags.hasLauncherMetadataSignal {
             details.append("Compatibility metadata recommends launcher dependency repair for this game.")
         }
-        if flags.hasWebViewAuthFault {
+        details.append(contentsOf: input.launcherLogSignals)
+        details.append(contentsOf: input.runtimeComponentSignals)
+        if input.flags.hasWebViewAuthFault {
             details.append("Recent logs match Microsoft/Xbox/WebView2 auth-loop signals.")
         }
-        if flags.hasRuntimeDependencyFault {
+        if input.flags.hasRuntimeDependencyFault {
             details.append("Recent logs mention .NET, Visual C++, UCRT, or loader DLL failures.")
         }
-        let missingVisualCppDLLs = missingDLLs.filter { visualCppRuntimeDLLs.contains($0) }
+        let missingVisualCppDLLs = input.missingDLLs.filter { visualCppRuntimeDLLs.contains($0) }
         if !missingVisualCppDLLs.isEmpty {
             let dlls = missingVisualCppDLLs.prefix(4).joined(separator: ", ")
             details.append("Missing Visual C++/UCRT DLL candidates: \(dlls).")
         }
-        if !missingDotNetMarkers.isEmpty {
-            details.append("Missing .NET runtime markers: \(missingDotNetMarkers.prefix(4).joined(separator: ", ")).")
+        if !input.missingDotNetMarkers.isEmpty {
+            let markers = input.missingDotNetMarkers.prefix(4).joined(separator: ", ")
+            details.append("Missing .NET runtime markers: \(markers).")
         }
-        if flags.hasWebViewAuthFault, !missingXboxServices.isEmpty {
-            let services = missingXboxServices.prefix(4).joined(separator: ", ")
+        if input.flags.hasWebViewAuthFault, !input.missingXboxServices.isEmpty {
+            let services = input.missingXboxServices.prefix(4).joined(separator: ", ")
             details.append(
                 "Xbox Identity/Gaming Services are unavailable in this prefix (\(services)); Vector can reset "
                     + "WebView/cache/callback state, but the Microsoft Store service layer is a manual fallback."
@@ -365,6 +480,76 @@ private extension VectorDoctor {
         }
 
         return details.isEmpty ? "Launcher dependencies look healthy." : details.joined(separator: " ")
+    }
+
+    static func launcherDependencySignals(in logText: String) -> [String] {
+        var details: [String] = []
+        if containsAny(eaLauncherFaultNeedles, in: logText) {
+            details.append(
+                "EA App/EADesktop startup fault detected; repair WebView2, .NET Desktop Runtime, "
+                    + "Visual C++/UCRT, and core fonts."
+            )
+        }
+        if containsAny(epicLauncherFaultNeedles, in: logText) {
+            details.append(
+                "Epic Games Launcher prerequisite fault detected; repair Visual C++/UCRT, WebView2, "
+                    + "DirectX helper DLLs, and fonts."
+            )
+        }
+        if containsAny(ubisoftLauncherFaultNeedles, in: logText) {
+            details.append(
+                "Ubisoft Connect startup fault detected; repair Visual C++/UCRT, "
+                    + "WebView2/Qt web runtime support, and launcher fonts."
+            )
+        }
+        if containsAny(gogLauncherFaultNeedles, in: logText) {
+            details.append("GOG Galaxy startup fault detected; repair WebView2, .NET, Visual C++/UCRT, and core fonts.")
+        }
+        return uniqueStrings(details)
+    }
+
+    static func runtimeComponentSignals(in logText: String) -> [String] {
+        var details: [String] = []
+        if containsAny(webViewRuntimeFaultNeedles, in: logText) {
+            details.append(
+                "WebView2 runtime repair required: logs mention WebView2Loader/CoreWebView2/msedgewebview2 "
+                    + "startup failures."
+            )
+        }
+        if containsAny(dotNetFaultNeedles, in: logText) {
+            details.append(".NET repair required: logs mention mscoree/CLR/.NET runtime components.")
+        }
+        if containsAny(visualCppFaultNeedles, in: logText) {
+            details.append(
+                "Visual C++/UCRT repair required: logs mention vcruntime/msvcp/ucrt/api-ms-win-crt "
+                    + "loader failures."
+            )
+        }
+        return uniqueStrings(details)
+    }
+
+    static func mediaDependencySignals(in logText: String) -> [String] {
+        var details: [String] = []
+        if containsAny(["mfplat.dll", "mfreadwrite.dll", "mfplay.dll", "media foundation"], in: logText) {
+            details.append("Media Foundation repair required: logs mention MFPlat/MFReadWrite/MFPlay video components.")
+        }
+        if containsAny(["winegstreamer", "gstreamer"], in: logText) {
+            details.append("WineGStreamer repair required: logs mention broken GStreamer video/audio decoding.")
+        }
+        if containsAny(
+            ["quartz.dll", "devenum.dll", "wmvcore.dll", "msmpeg2vdec.dll", "msmpeg2adec.dll"],
+            in: logText
+        ) {
+            details.append(
+                "Codec/DirectShow repair required: logs mention Quartz, WMVCore, or MPEG decoder components."
+            )
+        }
+        return uniqueStrings(details)
+    }
+
+    static func uniqueStrings(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
     }
 
     static func graphicsDetails(issues: [String]) -> String {
