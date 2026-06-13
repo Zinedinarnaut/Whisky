@@ -37,29 +37,45 @@ struct BottleView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
-                LazyVGrid(columns: gridLayout, alignment: .center) {
-                    ForEach(bottle.pinnedPrograms, id: \.id) { pinnedProgram in
-                        PinView(
-                            bottle: bottle, program: pinnedProgram.program, pin: pinnedProgram.pin, path: $path
-                        )
+                VStack(alignment: .leading, spacing: 14) {
+                    VectorPanelCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            VectorSectionHeader(title: "Pinned Apps")
+                            LazyVGrid(columns: gridLayout, alignment: .leading, spacing: 10) {
+                                ForEach(bottle.pinnedPrograms, id: \.id) { pinnedProgram in
+                                    PinView(
+                                        bottle: bottle,
+                                        program: pinnedProgram.program,
+                                        pin: pinnedProgram.pin,
+                                        path: $path
+                                    )
+                                }
+                                PinAddView(bottle: bottle)
+                            }
+                        }
                     }
-                    PinAddView(bottle: bottle)
+
+                    VectorPanelCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            VectorSectionHeader(title: "Bottle Controls")
+                            VStack(spacing: 2) {
+                                NavigationLink(value: BottleStage.programs) {
+                                    BottleControlNavigationRow(icon: "list.bullet", title: "Programs")
+                                }
+                                NavigationLink(value: BottleStage.config) {
+                                    BottleControlNavigationRow(icon: "gearshape", title: "Configuration")
+                                }
+                                NavigationLink(value: BottleStage.processes) {
+                                    BottleControlNavigationRow(icon: "hockey.puck.circle", title: "Running Processes")
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
-                .padding()
-                Form {
-                    NavigationLink(value: BottleStage.programs) {
-                        Label("tab.programs", systemImage: "list.bullet")
-                    }
-                    NavigationLink(value: BottleStage.config) {
-                        Label("tab.config", systemImage: "gearshape")
-                    }
-                    NavigationLink(value: BottleStage.processes) {
-                        Label("tab.processes", systemImage: "hockey.puck.circle")
-                    }
-                }
-                .formStyle(.grouped)
-                .scrollDisabled(true)
+                .padding(16)
             }
+            .background(VectorPanelTokens.background)
             .bottomBar {
                 HStack {
                     Spacer()
@@ -161,5 +177,30 @@ struct BottleView: View {
                 ))
             }
         }
+    }
+}
+
+private struct BottleControlNavigationRow: View {
+    let icon: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(.white.opacity(0.78))
+                .frame(width: 18)
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.92))
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(VectorPanelTokens.subtleText)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 38)
+        .background(Color.white.opacity(0.001), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }

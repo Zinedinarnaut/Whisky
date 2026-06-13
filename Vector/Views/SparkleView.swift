@@ -76,7 +76,7 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, minHeight: 320)
             } else {
                 LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)],
+                    columns: [GridItem(.adaptive(minimum: 280, maximum: 380), spacing: 12)],
                     spacing: 12
                 ) {
                     ForEach(sortedBottles) { bottle in
@@ -102,17 +102,17 @@ private struct HomeBottleCard: View {
     }
 
     private var statusColor: Color {
-        bottle.isAvailable ? .green : .orange
+        bottle.isAvailable ? VectorPanelTokens.success : VectorPanelTokens.warning
     }
 
     var body: some View {
         Button(action: onOpen) {
-            VectorPanelCard {
-                VStack(alignment: .leading, spacing: 10) {
+            VectorPanelCard(padding: 13) {
+                VStack(alignment: .leading, spacing: 11) {
                     HStack(alignment: .top, spacing: 10) {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(bottle.settings.name)
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.95))
                                 .lineLimit(2)
                             Text("Windows \(bottle.settings.windowsVersion.pretty())")
@@ -120,19 +120,10 @@ private struct HomeBottleCard: View {
                                 .foregroundStyle(VectorPanelTokens.subtleText)
                         }
                         Spacer(minLength: 8)
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(statusColor)
-                                .frame(width: 7, height: 7)
-                            Text(statusLabel)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(statusColor)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(Color.white.opacity(0.06))
+                        VectorStatusLabel(
+                            text: statusLabel,
+                            tint: statusColor,
+                            icon: bottle.isAvailable ? "checkmark" : "exclamationmark"
                         )
                     }
 
@@ -176,9 +167,9 @@ private struct PatchStatePill: View {
         .font(.system(size: 11, weight: .semibold))
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(Color.white.opacity(0.05), in: Capsule())
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         .overlay(
-            Capsule()
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(tint.opacity(0.16), lineWidth: 1)
         )
     }

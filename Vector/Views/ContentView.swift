@@ -251,12 +251,16 @@ struct ContentView: View {
                             }
                         }
                         .id(bottle.url)
+                        .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
             .animation(.default, value: bottleVM.bottles)
             .animation(.default, value: bottleFilter)
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(VectorPanelTokens.background)
             .onChange(of: newlyCreatedBottleURL) { _, url in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     selected = url
@@ -326,16 +330,35 @@ struct ContentView: View {
             }
             selectedDetail = detail
         } label: {
-            HStack {
-                Label(title, systemImage: icon)
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(selectedDetail == detail ? .white.opacity(0.92) : VectorPanelTokens.subtleText)
+                    .frame(width: 18)
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(selectedDetail == detail ? 0.92 : 0.70))
                 Spacer()
                 if selectedDetail == detail {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(Color.accentColor)
+                    Circle()
+                        .fill(Color.white.opacity(0.72))
+                        .frame(width: 6, height: 6)
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous)
+                    .fill(selectedDetail == detail ? Color.white.opacity(0.10) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous)
+                    .stroke(selectedDetail == detail ? VectorPanelTokens.border : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
+        .listRowBackground(Color.clear)
     }
 
     var filteredBottles: [Bottle] {
@@ -541,7 +564,7 @@ private struct VectorOnboardingFlowSheet: View {
                     ForEach(environmentItems) { item in
                         HStack(spacing: 8) {
                             Image(systemName: item.success ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(item.success ? Color.green : VectorPanelTokens.danger)
+                                .foregroundStyle(item.success ? VectorPanelTokens.success : VectorPanelTokens.danger)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.title)
                                     .font(.system(size: 13, weight: .medium))

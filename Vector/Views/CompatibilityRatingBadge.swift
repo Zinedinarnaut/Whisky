@@ -28,8 +28,12 @@ struct CompatibilityRatingBadge: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(
-                Capsule()
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(backgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(foregroundColor.opacity(0.18), lineWidth: 1)
             )
             .foregroundStyle(foregroundColor)
     }

@@ -41,6 +41,14 @@ struct PinAddView: View {
         }
         .frame(width: 90, height: 90)
         .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous)
+                .fill(VectorPanelTokens.elevatedSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous)
+                .stroke(VectorPanelTokens.border, lineWidth: 1)
+        )
         .sheet(isPresented: $showingSheet) {
             PinCreationView(bottle: bottle)
         }

@@ -71,12 +71,6 @@ struct CompatibilityDatabaseView: View {
 
     @State private var searchQuery = ""
     @State private var ratingFilter: CompatibilityRatingFilter = .all
-    @State private var tagFilter = CompatibilityFilterPanel.allTagsValue
-
-    private var availableTags: [String] {
-        Array(Set(games.flatMap(\.searchableTags)))
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
 
     private var filteredGames: [CompatibilityGame] {
         games
@@ -91,11 +85,6 @@ struct CompatibilityDatabaseView: View {
 
     private func matchesGame(_ game: CompatibilityGame) -> Bool {
         if let required = ratingFilter.rating, game.rating != required {
-            return false
-        }
-
-        if tagFilter != CompatibilityFilterPanel.allTagsValue,
-           !game.searchableTags.contains(where: { $0.caseInsensitiveCompare(tagFilter) == .orderedSame }) {
             return false
         }
 
@@ -138,12 +127,9 @@ struct CompatibilityDatabaseView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             CompatibilityDatabaseHeader(totalCount: games.count, filteredCount: filteredGames.count)
-            CompatibilityCoverageStrip(games: games)
             CompatibilityFilterPanel(
                 searchQuery: $searchQuery,
-                ratingFilter: $ratingFilter,
-                tagFilter: $tagFilter,
-                availableTags: availableTags
+                ratingFilter: $ratingFilter
             )
 
             ScrollView {
@@ -179,9 +165,9 @@ private struct CompatibilityDatabaseHeader: View {
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "checklist.checked")
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.green.opacity(0.9))
+                    .foregroundStyle(VectorPanelTokens.success.opacity(0.9))
                     .frame(width: 34, height: 34)
-                    .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    .background(VectorPanelTokens.success.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Compatibility Database")
@@ -253,7 +239,7 @@ private struct CompatibilityCoverageStrip: View {
                 title: "Playable",
                 count: games.filter { $0.rating == .playable }.count,
                 icon: "checkmark.seal",
-                color: .green
+                color: VectorPanelTokens.success
             ),
             CompatibilityCoverageSummaryItem(
                 title: "Remote rules",
@@ -265,7 +251,7 @@ private struct CompatibilityCoverageStrip: View {
                 title: "Dependency repairs",
                 count: games.filter { $0.hasDependencyRepairs }.count,
                 icon: "wrench.and.screwdriver",
-                color: .orange
+                color: VectorPanelTokens.warning
             ),
             CompatibilityCoverageSummaryItem(
                 title: "Known issues",
@@ -316,19 +302,15 @@ private struct CompatibilityCoverageSummaryItem: Identifiable {
 }
 
 private struct CompatibilityFilterPanel: View {
-    static let allTagsValue = "__all_tags__"
-
     @Binding var searchQuery: String
     @Binding var ratingFilter: CompatibilityRatingFilter
-    @Binding var tagFilter: String
-    let availableTags: [String]
 
     var body: some View {
         VectorPanelCard {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(VectorPanelTokens.subtleText)
-                TextField("Search games, AppID, tags, patch state, repairs, or anti-cheat", text: $searchQuery)
+                TextField("Search games, notes, AppID, or anti-cheat", text: $searchQuery)
                     .textFieldStyle(.plain)
                 Picker("Status", selection: $ratingFilter) {
                     ForEach(CompatibilityRatingFilter.allCases) { option in
@@ -337,14 +319,6 @@ private struct CompatibilityFilterPanel: View {
                 }
                 .pickerStyle(.menu)
                 .frame(width: 160)
-                Picker("Tag", selection: $tagFilter) {
-                    Text("Tag: All").tag(Self.allTagsValue)
-                    ForEach(availableTags, id: \.self) { tag in
-                        Text(tag).tag(tag)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 190)
             }
         }
     }
@@ -361,14 +335,6 @@ private struct CompatibilityGameCard: View {
         game.appID.map { "AppID \($0)" } ?? "No AppID"
     }
 
-    private var visibleTags: [String] {
-        Array(game.tags.prefix(3))
-    }
-
-    private var hiddenTagCount: Int {
-        max(0, game.tags.count - visibleTags.count)
-    }
-
     private var patchCoverage: String {
         if game.officialSupportRequired {
             return "Official support required"
@@ -382,54 +348,34 @@ private struct CompatibilityGameCard: View {
         return "Metadata only"
     }
 
+    private var primaryNote: String {
+        if game.trustClassification == .blockedAntiCheat || game.officialSupportRequired {
+            return "Official anti-cheat/runtime support is required before local play."
+        }
+        if let recommendedAction = visibility.recommendedAction, !recommendedAction.isEmpty {
+            return recommendedAction
+        }
+        if let note = game.notes.first, !note.isEmpty {
+            return note
+        }
+        return game.recommendedPreset
+    }
+
     var body: some View {
-        VectorPanelCard {
-            VStack(alignment: .leading, spacing: 10) {
+        VectorPanelCard(padding: 13) {
+            VStack(alignment: .leading, spacing: 11) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(game.title)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.95))
-                        HStack(spacing: 8) {
-                            CompatibilityMetadataPill(text: game.store, icon: "bag")
-                            CompatibilityMetadataPill(text: appIDText, icon: "number")
-                            CompatibilityMetadataPill(text: "Verified \(game.lastVerifiedOn)", icon: "calendar")
-                        }
+                        Text(primaryNote)
+                            .font(.system(size: 12))
+                            .foregroundStyle(VectorPanelTokens.subtleText)
+                            .lineLimit(2)
                     }
                     Spacer(minLength: 8)
                     CompatibilityRatingBadge(rating: game.rating)
-                }
-
-                if !visibleTags.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(visibleTags, id: \.self) { tag in
-                            Text(tag)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.62))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(Color.white.opacity(0.04), in: Capsule())
-                        }
-                        if hiddenTagCount > 0 {
-                            Text("+\(hiddenTagCount)")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(VectorPanelTokens.subtleText)
-                        }
-                    }
-                }
-
-                CompatibilityPatchVisibilityPanel(
-                    coverage: patchCoverage,
-                    confidence: game.confidence,
-                    metadata: visibility,
-                    repairs: game.dependencyRepairs
-                )
-
-                if let note = game.notes.first {
-                    Text(note)
-                        .font(.system(size: 12))
-                        .foregroundStyle(VectorPanelTokens.subtleText)
-                        .lineLimit(2)
                 }
 
                 if game.trustClassification == .blockedAntiCheat || game.trustClassification == .protectedMultiplayer {
@@ -441,11 +387,36 @@ private struct CompatibilityGameCard: View {
                     )
                 }
 
-                if !game.fallbackPlayOptions.isEmpty {
-                    Text("Fallback: \(game.fallbackPlayOptions.joined(separator: ", "))")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .lineLimit(1)
+                HStack(spacing: 8) {
+                    CompatibilityMetadataPill(text: game.store, icon: "bag")
+                    CompatibilityMetadataPill(text: appIDText, icon: "number")
+                    Spacer(minLength: 8)
+                    Text("Verified \(game.lastVerifiedOn)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.46))
+                }
+
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        CompatibilityPatchVisibilityPanel(
+                            coverage: patchCoverage,
+                            confidence: game.confidence,
+                            metadata: visibility,
+                            repairs: game.dependencyRepairs
+                        )
+
+                        if !game.fallbackPlayOptions.isEmpty {
+                            Text("Fallback: \(game.fallbackPlayOptions.joined(separator: ", "))")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.55))
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    Text("Technical details")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(VectorPanelTokens.subtleText)
                 }
             }
         }
@@ -496,7 +467,7 @@ private struct CompatibilityPatchVisibilityPanel: View {
                     title: "Confidence",
                     value: "\(Int(confidence * 100))%",
                     icon: "gauge.with.dots.needle.bottom.50percent",
-                    tint: .green,
+                    tint: VectorPanelTokens.success,
                     monospaced: true
                 )
             }
@@ -505,7 +476,7 @@ private struct CompatibilityPatchVisibilityPanel: View {
                     title: "Fix metadata",
                     value: fixSummary,
                     icon: "wrench.and.screwdriver",
-                    tint: repairs.isEmpty ? .secondary : .orange
+                    tint: repairs.isEmpty ? .secondary : VectorPanelTokens.warning
                 )
                 CompatibilityVisibilityItem(
                     title: "Known issue",
@@ -568,7 +539,11 @@ private struct CompatibilityMetadataPill: View {
         .foregroundStyle(VectorPanelTokens.subtleText)
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
-        .background(Color.white.opacity(0.05), in: Capsule())
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+        )
     }
 }
 
@@ -588,9 +563,9 @@ private struct CompatibilityCoveragePill: View {
         .foregroundStyle(tint.opacity(0.95))
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
-        .background(tint.opacity(0.1), in: Capsule())
+        .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         .overlay(
-            Capsule()
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(tint.opacity(0.16), lineWidth: 1)
         )
     }

@@ -51,12 +51,20 @@ struct PinView: View {
         }
         .frame(width: 90, height: 90)
         .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous)
+                .fill(VectorPanelTokens.elevatedSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous)
+                .stroke(VectorPanelTokens.border, lineWidth: 1)
+        )
         .overlay {
             HStack {
                 Spacer()
                 Image(systemName: "play.fill")
                     .resizable()
-                    .foregroundColor(.green)
+                    .foregroundColor(VectorPanelTokens.success)
                     .frame(width: 16, height: 16)
             }
             .frame(width: 45, height: 45)

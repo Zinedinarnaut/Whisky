@@ -28,8 +28,54 @@ struct BottleListEntry: View {
     @State private var showBottleRename: Bool = false
     @State private var name: String = ""
 
+    private var isSelected: Bool {
+        selected == bottle.url
+    }
+
+    private var availabilityText: String {
+        bottle.isAvailable ? "Ready" : "Missing"
+    }
+
+    private var availabilityTint: Color {
+        bottle.isAvailable ? VectorPanelTokens.success : VectorPanelTokens.warning
+    }
+
     var body: some View {
-        Text(name)
+        HStack(spacing: 10) {
+            Image(systemName: bottle.isAvailable ? "shippingbox.fill" : "shippingbox")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(isSelected ? .white.opacity(0.92) : VectorPanelTokens.subtleText)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(bottle.isAvailable ? 0.92 : 0.48))
+                    .lineLimit(1)
+                Text("Windows \(bottle.settings.windowsVersion.pretty())")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(VectorPanelTokens.subtleText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Circle()
+                .fill(availabilityTint.opacity(bottle.isAvailable ? 0.95 : 0.65))
+                .frame(width: 7, height: 7)
+                .help(availabilityText)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous)
+                .fill(isSelected ? Color.white.opacity(0.10) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous)
+                .stroke(isSelected ? VectorPanelTokens.border : Color.clear, lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: VectorPanelTokens.controlRadius, style: .continuous))
             .opacity(bottle.isAvailable ? 1.0 : 0.5)
             .onChange(of: refresh, initial: true) {
                 name = bottle.settings.name

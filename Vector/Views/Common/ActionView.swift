@@ -60,13 +60,19 @@ struct ActionView: View {
 }
 
 enum VectorPanelTokens {
-    static let background = Color(nsColor: NSColor(calibratedWhite: 0.08, alpha: 1))
-    static let surface = Color(nsColor: NSColor(calibratedWhite: 0.11, alpha: 1))
-    static let border = Color.white.opacity(0.08)
-    static let divider = Color.white.opacity(0.07)
-    static let subtleText = Color.white.opacity(0.62)
-    static let sectionText = Color.white.opacity(0.56)
-    static let danger = Color(red: 0.89, green: 0.40, blue: 0.40)
+    static let background = Color(nsColor: NSColor(calibratedWhite: 0.035, alpha: 1))
+    static let surface = Color(nsColor: NSColor(calibratedWhite: 0.085, alpha: 1))
+    static let elevatedSurface = Color(nsColor: NSColor(calibratedWhite: 0.12, alpha: 1))
+    static let hoverSurface = Color.white.opacity(0.07)
+    static let border = Color.white.opacity(0.10)
+    static let divider = Color.white.opacity(0.08)
+    static let subtleText = Color.white.opacity(0.60)
+    static let sectionText = Color.white.opacity(0.50)
+    static let success = Color(red: 0.35, green: 0.82, blue: 0.48)
+    static let warning = Color(red: 0.95, green: 0.68, blue: 0.30)
+    static let danger = Color(red: 0.90, green: 0.36, blue: 0.36)
+    static let panelRadius: CGFloat = 12
+    static let controlRadius: CGFloat = 9
 }
 
 struct VectorPanelCard<Content: View>: View {
@@ -85,14 +91,14 @@ struct VectorPanelCard<Content: View>: View {
         content()
             .padding(padding)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: VectorPanelTokens.panelRadius, style: .continuous)
                     .fill(VectorPanelTokens.surface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: VectorPanelTokens.panelRadius, style: .continuous)
                     .stroke(VectorPanelTokens.border, lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.28), radius: 14, x: 0, y: 5)
+            .shadow(color: .black.opacity(0.20), radius: 8, x: 0, y: 3)
     }
 }
 
@@ -184,6 +190,35 @@ struct VectorControlListRow: View {
     }
 }
 
+struct VectorStatusLabel: View {
+    let text: String
+    let tint: Color
+    var icon: String?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            Text(text)
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.2)
+        }
+        .foregroundStyle(tint.opacity(0.95))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(tint.opacity(0.11))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(tint.opacity(0.18), lineWidth: 1)
+        )
+    }
+}
+
 struct VectorPrimaryPanelButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -192,11 +227,11 @@ struct VectorPrimaryPanelButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: 42)
             .background(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.20 : 0.14))
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.18 : 0.11))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(Color.white.opacity(0.11), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.13), lineWidth: 1)
             )
     }
 }
@@ -248,7 +283,7 @@ struct VectorCompactPickerModifier: ViewModifier {
             .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(VectorPanelTokens.elevatedSurface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
