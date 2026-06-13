@@ -60,13 +60,13 @@ struct BottleView: View {
                             VectorSectionHeader(title: "Bottle Controls")
                             VStack(spacing: 2) {
                                 NavigationLink(value: BottleStage.programs) {
-                                    BottleControlNavigationRow(icon: "list.bullet", title: "Programs")
+                                    BottleControlNavigationRow(icon: "list.bullet", title: Text("tab.programs"))
                                 }
                                 NavigationLink(value: BottleStage.config) {
-                                    BottleControlNavigationRow(icon: "gearshape", title: "Configuration")
+                                    BottleControlNavigationRow(icon: "gearshape", title: Text("tab.config"))
                                 }
                                 NavigationLink(value: BottleStage.processes) {
-                                    BottleControlNavigationRow(icon: "hockey.puck.circle", title: "Running Processes")
+                                    BottleControlNavigationRow(icon: "hockey.puck.circle", title: Text("tab.processes"))
                                 }
                             }
                             .buttonStyle(.plain)
@@ -182,7 +182,7 @@ struct BottleView: View {
 
 private struct BottleControlNavigationRow: View {
     let icon: String
-    let title: String
+    let title: Text
 
     var body: some View {
         HStack(spacing: 10) {
@@ -190,7 +190,7 @@ private struct BottleControlNavigationRow: View {
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(.white.opacity(0.78))
                 .frame(width: 18)
-            Text(title)
+            title
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
             Spacer()

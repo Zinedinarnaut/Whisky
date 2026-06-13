@@ -60,17 +60,17 @@ struct ActionView: View {
 }
 
 enum VectorPanelTokens {
-    static let background = Color(nsColor: NSColor(calibratedWhite: 0.035, alpha: 1))
-    static let surface = Color(nsColor: NSColor(calibratedWhite: 0.085, alpha: 1))
-    static let elevatedSurface = Color(nsColor: NSColor(calibratedWhite: 0.12, alpha: 1))
+    static let background = Color(nsColor: NSColor(calibratedWhite: 0.08, alpha: 1))
+    static let surface = Color(nsColor: NSColor(calibratedWhite: 0.11, alpha: 1))
+    static let elevatedSurface = Color.white.opacity(0.05)
     static let hoverSurface = Color.white.opacity(0.07)
-    static let border = Color.white.opacity(0.10)
-    static let divider = Color.white.opacity(0.08)
-    static let subtleText = Color.white.opacity(0.60)
-    static let sectionText = Color.white.opacity(0.50)
-    static let success = Color(red: 0.35, green: 0.82, blue: 0.48)
-    static let warning = Color(red: 0.95, green: 0.68, blue: 0.30)
-    static let danger = Color(red: 0.90, green: 0.36, blue: 0.36)
+    static let border = Color.white.opacity(0.08)
+    static let divider = Color.white.opacity(0.07)
+    static let subtleText = Color.white.opacity(0.62)
+    static let sectionText = Color.white.opacity(0.56)
+    static let success = Color.green
+    static let warning = Color.orange
+    static let danger = Color(red: 0.89, green: 0.40, blue: 0.40)
     static let panelRadius: CGFloat = 12
     static let controlRadius: CGFloat = 9
 }
@@ -227,11 +227,11 @@ struct VectorPrimaryPanelButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: 42)
             .background(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.18 : 0.11))
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.20 : 0.14))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.11), lineWidth: 1)
             )
     }
 }
@@ -283,7 +283,7 @@ struct VectorCompactPickerModifier: ViewModifier {
             .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(VectorPanelTokens.elevatedSurface)
+                    .fill(Color.white.opacity(0.06))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)

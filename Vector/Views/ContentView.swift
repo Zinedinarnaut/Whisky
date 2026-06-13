@@ -259,8 +259,6 @@ struct ContentView: View {
             .animation(.default, value: bottleVM.bottles)
             .animation(.default, value: bottleFilter)
             .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .background(VectorPanelTokens.background)
             .onChange(of: newlyCreatedBottleURL) { _, url in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     selected = url

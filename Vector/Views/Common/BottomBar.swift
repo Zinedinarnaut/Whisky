@@ -33,12 +33,10 @@ private struct BottomBarViewModifier<BarContent>: ViewModifier where BarContent:
         content
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(VectorPanelTokens.divider)
-                        .frame(height: 1)
+                    Divider()
                     barContent
                 }
-                .background(VectorPanelTokens.surface)
+                .background(.regularMaterial)
                 .buttonStyle(BottomBarButtonStyle())
             }
     }
